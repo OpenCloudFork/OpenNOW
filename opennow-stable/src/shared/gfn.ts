@@ -41,6 +41,8 @@ export interface Settings {
   shortcutToggleAntiAfk: string;
   windowWidth: number;
   windowHeight: number;
+  discordPresenceEnabled: boolean;
+  discordClientId: string;
 }
 
 export interface LoginProvider {
@@ -318,4 +320,17 @@ export interface OpenNowApi {
   getSettings(): Promise<Settings>;
   setSetting<K extends keyof Settings>(key: K, value: Settings[K]): Promise<void>;
   resetSettings(): Promise<Settings>;
+  updateDiscordPresence(state: DiscordPresencePayload): Promise<void>;
+  clearDiscordPresence(): Promise<void>;
+}
+
+export interface DiscordPresencePayload {
+  type: "idle" | "queue" | "streaming";
+  gameName?: string;
+  resolution?: string;
+  fps?: number;
+  bitrateMbps?: number;
+  region?: string;
+  startTimestamp?: number;
+  queuePosition?: number;
 }

@@ -13,6 +13,7 @@ import type {
   SubscriptionInfo,
   StreamRegion,
   VideoCodec,
+  DiscordPresencePayload,
 } from "@shared/gfn";
 
 import {
@@ -268,6 +269,8 @@ export function App(): JSX.Element {
     shortcutToggleAntiAfk: DEFAULT_SHORTCUTS.shortcutToggleAntiAfk,
     windowWidth: 1400,
     windowHeight: 900,
+    discordPresenceEnabled: false,
+    discordClientId: "",
   });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [regions, setRegions] = useState<StreamRegion[]>([]);
@@ -589,6 +592,57 @@ export function App(): JSX.Element {
     const timer = window.setInterval(updateElapsed, 1000);
     return () => window.clearInterval(timer);
   }, [sessionStartedAtMs, streamStatus]);
+
+  // Discord Rich Presence updates
+  useEffect(() => {
+    if (!settings.discordPresenceEnabled || !settings.discordClientId) {
+      return;
+    }
+
+    let payload: DiscordPresencePayload;
+
+    if (streamStatus === "idle") {
+      payload = { type: "idle" };
+    } else if (streamStatus === "queue" || streamStatus === "setup") {
+      payload = {
+        type: "queue",
+        gameName: streamingGame?.title,
+        queuePosition,
+        startTimestamp: sessionStartedAtMs ?? undefined,
+      };
+    } else {
+      const hasDiag = diagnostics.resolution !== "" || diagnostics.bitrateKbps > 0;
+      payload = {
+        type: "streaming",
+        gameName: streamingGame?.title,
+        startTimestamp: sessionStartedAtMs ?? undefined,
+        ...(hasDiag && diagnostics.resolution ? { resolution: diagnostics.resolution } : {}),
+        ...(hasDiag && diagnostics.decodeFps > 0 ? { fps: diagnostics.decodeFps } : {}),
+        ...(hasDiag && diagnostics.bitrateKbps > 0 ? { bitrateMbps: Math.round(diagnostics.bitrateKbps / 100) / 10 } : {}),
+        ...(diagnostics.serverRegion ? { region: diagnostics.serverRegion } : {}),
+      };
+    }
+
+    window.openNow.updateDiscordPresence(payload).catch(() => {});
+  }, [
+    streamStatus,
+    streamingGame?.title,
+    sessionStartedAtMs,
+    queuePosition,
+    diagnostics.resolution,
+    diagnostics.decodeFps,
+    diagnostics.bitrateKbps,
+    diagnostics.serverRegion,
+    settings.discordPresenceEnabled,
+    settings.discordClientId,
+  ]);
+
+  // Clear Discord presence on logout
+  useEffect(() => {
+    if (!authSession) {
+      window.openNow.clearDiscordPresence().catch(() => {});
+    }
+  }, [authSession]);
 
   useEffect(() => {
     if (!streamWarning) return;
