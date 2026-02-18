@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { JSX } from "react";
-import { RefreshCw, Save, Trash2, RotateCcw, Check, Plus, Joystick, Eye } from "lucide-react";
+import { Save, Trash2, RotateCcw, Check, Joystick, Eye, Plus } from "lucide-react";
 import type {
   Settings,
   FlightProfile,
@@ -57,36 +57,54 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
   const [showAllDevices, setShowAllDevices] = useState(false);
   const stateUnsubRef = useRef<(() => void) | null>(null);
   const webHidSupported = FlightHidService.isSupported();
+  const profileLoadEpoch = useRef(0);
 
   const enabled = settings.flightControlsEnabled;
   const slot = settings.flightControlsSlot;
 
-  const loadDevices = useCallback(async (showAll: boolean) => {
-    const service = getFlightHidService();
-    const devs = await service.getDevices(showAll);
+  const refreshDevices = useCallback(async (showAll: boolean): Promise<DeviceEntry[]> => {
+    const devs = await getFlightHidService().getDevices(showAll);
     const entries = devs.map(toEntry);
     setDevices(entries);
+    return entries;
   }, []);
 
   const loadAllProfiles = useCallback(async () => {
-    const profiles = await window.openNow.flightGetAllProfiles();
-    setAllProfiles(profiles);
+    setAllProfiles(await window.openNow.flightGetAllProfiles());
   }, []);
 
-  const handleRefresh = useCallback(async () => {
-    await loadDevices(showAllDevices);
-    await loadAllProfiles();
-  }, [loadDevices, loadAllProfiles, showAllDevices]);
+  const loadProfileForDevice = useCallback(async (vidPid: string) => {
+    const epoch = ++profileLoadEpoch.current;
+    let p = await window.openNow.flightGetProfile(vidPid);
+    if (!p) p = await window.openNow.flightResetProfile(vidPid);
+    if (profileLoadEpoch.current === epoch) {
+      setProfile(p ? { ...p } : null);
+    }
+  }, []);
 
   useEffect(() => {
-    if (enabled && webHidSupported) {
-      void handleRefresh();
-    }
-  }, [enabled, webHidSupported, handleRefresh]);
+    if (!enabled || !webHidSupported) return;
+    void (async () => {
+      const entries = await refreshDevices(showAllDevices);
+      await loadAllProfiles();
+      if (entries.length === 1) {
+        setSelectedIdx(0);
+        void loadProfileForDevice(entries[0]!.vidPid);
+      }
+    })();
+  }, [enabled, webHidSupported]);
 
   useEffect(() => {
     getFlightHidService().controllerSlot = slot;
   }, [slot]);
+
+  useEffect(() => {
+    if (selectedIdx >= 0 && selectedIdx < devices.length) {
+      void loadProfileForDevice(devices[selectedIdx]!.vidPid);
+    } else {
+      setProfile(null);
+    }
+  }, [selectedIdx, devices.length]);
 
   useEffect(() => {
     return () => {
@@ -97,43 +115,29 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
     };
   }, []);
 
-  const handleRequestDevice = useCallback(async () => {
-    const service = getFlightHidService();
-    const newDevices = await service.requestDevice();
-    if (newDevices.length > 0) {
-      await loadDevices(showAllDevices);
-      const freshDevs = await service.getDevices(showAllDevices);
-      const freshEntries = freshDevs.map(toEntry);
-      setDevices(freshEntries);
-      const addedDev = newDevices[0]!;
-      const addedIdx = freshEntries.findIndex(
-        (e) => e.device.vendorId === addedDev.vendorId && e.device.productId === addedDev.productId && e.device.productName === addedDev.productName,
-      );
-      if (addedIdx >= 0) setSelectedIdx(addedIdx);
-    }
-  }, [loadDevices, showAllDevices]);
+  const handlePairDevice = useCallback(async () => {
+    const newDevices = await getFlightHidService().requestDevice();
+    if (newDevices.length === 0) return;
+    const entries = await refreshDevices(showAllDevices);
+    const added = newDevices[0]!;
+    const idx = entries.findIndex(
+      (e) => e.device.vendorId === added.vendorId && e.device.productId === added.productId && e.device.productName === added.productName,
+    );
+    if (idx >= 0) setSelectedIdx(idx);
+  }, [refreshDevices, showAllDevices]);
 
   const handleStartCapture = useCallback(async () => {
-    if (selectedIdx < 0 || selectedIdx >= devices.length) return;
+    if (selectedIdx < 0 || selectedIdx >= devices.length || !profile) return;
     const entry = devices[selectedIdx]!;
-
-    let p = await window.openNow.flightGetProfile(entry.vidPid);
-    if (!p) {
-      p = await window.openNow.flightResetProfile(entry.vidPid);
-    }
-    setProfile(p);
-
     const service = getFlightHidService();
     service.controllerSlot = slot;
 
     if (stateUnsubRef.current) stateUnsubRef.current();
-    stateUnsubRef.current = service.onStateUpdate((state) => {
-      setFlightState(state);
-    });
+    stateUnsubRef.current = service.onStateUpdate((s) => setFlightState(s));
 
-    const ok = p ? await service.startCapture(entry.device, p) : false;
+    const ok = await service.startCapture(entry.device, profile);
     setIsCapturing(ok);
-  }, [selectedIdx, devices, slot]);
+  }, [selectedIdx, devices, slot, profile]);
 
   const handleStopCapture = useCallback(() => {
     getFlightHidService().stopCapture();
@@ -147,27 +151,56 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
 
   const handleAxisMappingChange = useCallback(
     (index: number, field: string, value: unknown) => {
-      if (!profile) return;
-      const updated = { ...profile };
-      updated.axisMappings = updated.axisMappings.map((m, i) =>
-        i !== index ? m : { ...m, [field]: value },
-      );
-      setProfile(updated);
+      setProfile((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          axisMappings: prev.axisMappings.map((m, i) =>
+            i !== index ? m : { ...m, [field]: value },
+          ),
+        };
+      });
     },
-    [profile],
+    [],
   );
 
   const handleButtonMappingChange = useCallback(
     (index: number, field: string, value: unknown) => {
-      if (!profile) return;
-      const updated = { ...profile };
-      updated.buttonMappings = updated.buttonMappings.map((m, i) =>
-        i !== index ? m : { ...m, [field]: value },
-      );
-      setProfile(updated);
+      setProfile((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          buttonMappings: prev.buttonMappings.map((m, i) =>
+            i !== index ? m : { ...m, [field]: value },
+          ),
+        };
+      });
     },
-    [profile],
+    [],
   );
+
+  const handleAddButtonMapping = useCallback(() => {
+    setProfile((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        buttonMappings: [
+          ...prev.buttonMappings,
+          { sourceIndex: prev.buttonMappings.length, targetButton: 0x1000 },
+        ],
+      };
+    });
+  }, []);
+
+  const handleRemoveButtonMapping = useCallback((removeIdx: number) => {
+    setProfile((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        buttonMappings: prev.buttonMappings.filter((_, i) => i !== removeIdx),
+      };
+    });
+  }, []);
 
   const handleSaveProfile = useCallback(async () => {
     if (!profile) return;
@@ -186,7 +219,7 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
     const entry = devices[selectedIdx]!;
     const p = await window.openNow.flightResetProfile(entry.vidPid);
     if (p) {
-      setProfile(p);
+      setProfile({ ...p });
       if (isCapturing) {
         const dev = getFlightHidService().getActiveDevice();
         if (dev) await getFlightHidService().startCapture(dev, p);
@@ -202,6 +235,9 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
     },
     [loadAllProfiles],
   );
+
+  const selectedVidPid = selectedIdx >= 0 && selectedIdx < devices.length ? devices[selectedIdx]!.vidPid : "";
+  const mappingKey = `${selectedVidPid}:${slot}`;
 
   return (
     <>
@@ -255,85 +291,97 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
                 checked={showAllDevices}
                 onChange={(e) => {
                   setShowAllDevices(e.target.checked);
-                  void loadDevices(e.target.checked);
+                  void refreshDevices(e.target.checked);
                 }}
               />
               <span className="settings-toggle-track" />
             </label>
           </div>
 
-          {/* Device management buttons */}
-          <div className="settings-row">
-            <label className="settings-label">Device</label>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button
-                type="button"
-                className="settings-shortcut-reset-btn"
-                onClick={() => void handleRefresh()}
-              >
-                <RefreshCw size={12} style={{ verticalAlign: "-1px", marginRight: 4 }} />
-                Refresh
-              </button>
-              <button
-                type="button"
-                className="settings-shortcut-reset-btn"
-                onClick={() => void handleRequestDevice()}
-              >
-                <Plus size={12} style={{ verticalAlign: "-1px", marginRight: 4 }} />
-                Add Device
-              </button>
-            </div>
-          </div>
+          {/* Device selection or pair prompt */}
+          {devices.length === 0 ? (
+            <>
+              <div className="settings-row settings-row--column">
+                <button
+                  type="button"
+                  className="settings-shortcut-reset-btn"
+                  style={{ color: "var(--accent)", borderColor: "rgba(88,217,138,0.35)", alignSelf: "flex-start" }}
+                  onClick={() => void handlePairDevice()}
+                >
+                  <Plus size={12} style={{ verticalAlign: "-1px", marginRight: 4 }} />
+                  Pair Flight Device
+                </button>
+                <span className="settings-subtle-hint" style={{ marginTop: 4 }}>
+                  Devices must be paired once. They remain available after pairing.
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="settings-row settings-row--column">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                  <label className="settings-label">Device</label>
+                  <button
+                    type="button"
+                    className="settings-shortcut-reset-btn"
+                    onClick={() => void handlePairDevice()}
+                    style={{ fontSize: "0.72rem", padding: "3px 8px" }}
+                  >
+                    <Plus size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />
+                    Pair New
+                  </button>
+                </div>
+                <select
+                  className="settings-text-input"
+                  style={{ width: "100%" }}
+                  value={selectedIdx}
+                  onChange={(e) => {
+                    const idx = Number(e.target.value);
+                    setSelectedIdx(idx);
+                  }}
+                  disabled={isCapturing}
+                >
+                  <option value={-1}>Select device…</option>
+                  {devices.map((entry, i) => (
+                    <option key={`${entry.vidPid}-${i}`} value={i}>
+                      {entry.label}  ({entry.vidPid}){!entry.isFlight ? "  [other]" : ""}
+                    </option>
+                  ))}
+                </select>
+                <span className="settings-subtle-hint">
+                  Devices must be paired once. They remain available after pairing.
+                </span>
+              </div>
 
-          {/* Device dropdown */}
-          <div className="settings-row settings-row--column">
-            {devices.length > 0 ? (
-              <select
-                className="settings-text-input"
-                style={{ width: "100%" }}
-                value={selectedIdx}
-                onChange={(e) => setSelectedIdx(Number(e.target.value))}
-                disabled={isCapturing}
-              >
-                <option value={-1}>Select device…</option>
-                {devices.map((entry, i) => (
-                  <option key={`${entry.vidPid}-${i}`} value={i}>
-                    {entry.label}  ({entry.vidPid}){!entry.isFlight ? "  [other]" : ""}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="settings-subtle-hint">
-                No paired devices. Click <strong>Add Device</strong> to pair a joystick or HOTAS.
-              </span>
-            )}
-          </div>
-
-          {/* Start / Stop capture */}
-          <div className="settings-row">
-            <label className="settings-label">Capture</label>
-            {!isCapturing ? (
-              <button
-                type="button"
-                className="settings-shortcut-reset-btn"
-                style={selectedIdx >= 0 ? { color: "var(--accent)", borderColor: "rgba(88,217,138,0.35)" } : {}}
-                onClick={() => void handleStartCapture()}
-                disabled={selectedIdx < 0}
-              >
-                <Joystick size={12} style={{ verticalAlign: "-1px", marginRight: 4 }} />
-                Start Capture
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="settings-shortcut-reset-btn"
-                style={{ color: "#ef4444", borderColor: "rgba(239,68,68,0.35)" }}
-                onClick={handleStopCapture}
-              >
-                Stop Capture
-              </button>
-            )}
-          </div>
+              {/* Start / Stop capture */}
+              {selectedIdx >= 0 && (
+                <div className="settings-row">
+                  <label className="settings-label">Capture</label>
+                  {!isCapturing ? (
+                    <button
+                      type="button"
+                      className="settings-shortcut-reset-btn"
+                      style={{ color: "var(--accent)", borderColor: "rgba(88,217,138,0.35)" }}
+                      onClick={() => void handleStartCapture()}
+                      disabled={!profile}
+                    >
+                      <Joystick size={12} style={{ verticalAlign: "-1px", marginRight: 4 }} />
+                      Start Capture
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="settings-shortcut-reset-btn"
+                      style={{ color: "#ef4444", borderColor: "rgba(239,68,68,0.35)" }}
+                      onClick={handleStopCapture}
+                    >
+                      Stop Capture
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
 
           {/* ── Live tester ──────────────────────────────── */}
           {isCapturing && flightState && (
@@ -382,9 +430,9 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
             </div>
           )}
 
-          {/* ── Axis mappings ────────────────────────────── */}
+          {/* ── Axis + Button mappings (keyed to force remount) ─ */}
           {profile && (
-            <div className="flight-mapping-section">
+            <div className="flight-mapping-section" key={mappingKey}>
               <div className="flight-mapping-header">
                 <h3>Axis Mappings</h3>
               </div>
@@ -464,16 +512,7 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
                 <button
                   type="button"
                   className="settings-shortcut-reset-btn"
-                  onClick={() => {
-                    if (!profile) return;
-                    setProfile({
-                      ...profile,
-                      buttonMappings: [
-                        ...profile.buttonMappings,
-                        { sourceIndex: profile.buttonMappings.length, targetButton: 0x1000 },
-                      ],
-                    });
-                  }}
+                  onClick={handleAddButtonMapping}
                 >
                   <Plus size={12} style={{ verticalAlign: "-1px", marginRight: 4 }} />
                   Add
@@ -512,13 +551,7 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
                       type="button"
                       className="settings-shortcut-reset-btn"
                       style={{ color: "#ef4444", borderColor: "rgba(239,68,68,0.25)", padding: "4px 8px" }}
-                      onClick={() => {
-                        if (!profile) return;
-                        setProfile({
-                          ...profile,
-                          buttonMappings: profile.buttonMappings.filter((_, idx) => idx !== i),
-                        });
-                      }}
+                      onClick={() => handleRemoveButtonMapping(i)}
                       title="Remove"
                     >
                       <Trash2 size={12} />

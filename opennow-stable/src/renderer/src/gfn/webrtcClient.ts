@@ -1722,6 +1722,37 @@ export class GfnWebRtcClient {
     }
   }
 
+  public releaseExternalGamepad(slot: number): void {
+    if (slot < 0 || slot >= GAMEPAD_MAX_CONTROLLERS) return;
+    if (!this.externalGamepadSlots.has(slot)) return;
+
+    this.externalGamepadSlots.delete(slot);
+    this.connectedGamepads.delete(slot);
+    this.previousGamepadStates.delete(slot);
+    this.gamepadBitmap &= ~(1 << slot);
+    this.log(`External gamepad released from slot ${slot}`);
+    this.diagnostics.connectedGamepads = this.connectedGamepads.size;
+    this.emitStats();
+
+    if (this.inputReady) {
+      const neutralState: GamepadInput = {
+        controllerId: slot,
+        buttons: 0,
+        leftTrigger: 0,
+        rightTrigger: 0,
+        leftStickX: 0,
+        leftStickY: 0,
+        rightStickX: 0,
+        rightStickY: 0,
+        connected: false,
+        timestampUs: timestampUs(),
+      };
+      const usePR = this.mouseInputChannel?.readyState === "open";
+      const bytes = this.inputEncoder.encodeGamepadState(neutralState, this.gamepadBitmap, usePR);
+      this.sendGamepad(bytes);
+    }
+  }
+
   public sendPasteShortcut(useMeta: boolean): boolean {
     if (!this.inputReady || !this.ensureKeyboardInputMode()) {
       return false;
