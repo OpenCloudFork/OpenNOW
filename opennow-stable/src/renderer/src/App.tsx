@@ -713,10 +713,24 @@ export function App(): JSX.Element {
   }, [authSession]);
 
   // Flight controls: forward WebHID gamepad state to WebRTC client
+  const flightSlotRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!settings.flightControlsEnabled) return;
+    if (!settings.flightControlsEnabled) {
+      if (flightSlotRef.current !== null && clientRef.current) {
+        clientRef.current.releaseExternalGamepad(flightSlotRef.current);
+      }
+      flightSlotRef.current = null;
+      return;
+    }
+    const newSlot = settings.flightControlsSlot;
+    const oldSlot = flightSlotRef.current;
+    if (oldSlot !== null && oldSlot !== newSlot && clientRef.current) {
+      clientRef.current.releaseExternalGamepad(oldSlot);
+    }
+    flightSlotRef.current = newSlot;
+
     const service = getFlightHidService();
-    service.controllerSlot = settings.flightControlsSlot;
+    service.controllerSlot = newSlot;
     const unsub = service.onGamepadState((state) => {
       clientRef.current?.injectExternalGamepad(state);
     });
