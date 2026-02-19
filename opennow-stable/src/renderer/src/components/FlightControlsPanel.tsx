@@ -379,10 +379,7 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
       {enabled && webHidSupported && (
         <>
           {/* Slot tabs */}
-          <div style={{
-            display: "flex", gap: 0, borderRadius: "var(--r-sm)",
-            border: "1px solid var(--panel-border)", overflow: "hidden", marginBottom: 2,
-          }}>
+          <div className="settings-seg" style={{ marginBottom: 2 }}>
             {[0, 1, 2, 3].map((s) => {
               const cfg = slots[s]!;
               const active = s === activeTab;
@@ -391,26 +388,15 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
                 <button
                   key={s}
                   type="button"
+                  className={`settings-seg-btn${active ? " active" : ""}`}
                   onClick={() => setActiveTab(s)}
-                  style={{
-                    flex: 1, padding: "8px 4px",
-                    background: active ? "var(--accent-surface-strong)" : "transparent",
-                    border: "none",
-                    borderRight: s < 3 ? "1px solid var(--panel-border)" : "none",
-                    color: active ? "var(--accent)" : "var(--ink-soft)",
-                    fontWeight: active ? 700 : 500,
-                    fontSize: "0.82rem",
-                    fontFamily: "inherit",
-                    cursor: "pointer",
-                    transition: "all 0.15s ease",
-                    position: "relative",
-                  }}
+                  style={{ padding: "8px 4px", position: "relative" }}
                 >
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
                     <span>Slot {s + 1}</span>
                     <span style={{
                       fontSize: "0.65rem",
-                      color: isCapt ? "var(--accent)" : cfg.enabled && cfg.deviceKey ? "var(--ink-muted)" : "var(--ink-muted)",
+                      color: isCapt ? "var(--accent)" : "var(--ink-muted)",
                       opacity: cfg.enabled && cfg.deviceKey ? 1 : 0.5,
                     }}>
                       {isCapt ? "Active" : cfg.enabled && cfg.deviceName ? cfg.deviceName.slice(0, 16) : cfg.enabled ? "No device" : "Off"}

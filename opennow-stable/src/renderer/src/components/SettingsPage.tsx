@@ -868,13 +868,15 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
           </div>
           <div className="settings-rows">
             <div className="settings-row">
-              <label className="settings-label">HDR Mode</label>
-              <div className="settings-chip-group">
+              <label className="settings-label" id="hdr-mode-label">HDR Mode</label>
+              <div className="settings-seg" role="radiogroup" aria-labelledby="hdr-mode-label">
                 {(["off", "auto", "on"] as HdrStreamingMode[]).map((mode) => (
                   <button
                     key={mode}
                     type="button"
-                    className={`settings-chip ${settings.hdrStreaming === mode ? "active" : ""}`}
+                    role="radio"
+                    aria-checked={settings.hdrStreaming === mode}
+                    className={`settings-seg-btn ${settings.hdrStreaming === mode ? "active" : ""}`}
                     onClick={() => {
                       handleChange("hdrStreaming", mode);
                       if (mode !== "off") void refreshHdrStatus();
