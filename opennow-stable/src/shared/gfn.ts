@@ -359,6 +359,7 @@ export interface OpenNowApi {
   flightGetAllProfiles(): Promise<FlightProfile[]>;
   flightResetProfile(vidPid: string): Promise<FlightProfile | null>;
   getOsHdrInfo(): Promise<{ osHdrEnabled: boolean; platform: string }>;
+  relaunchApp(): Promise<void>;
 }
 
 export type FlightAxisTarget =

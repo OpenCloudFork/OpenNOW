@@ -528,6 +528,11 @@ function registerIpcHandlers(): void {
     return getOsHdrInfo();
   });
 
+  ipcMain.handle(IPC_CHANNELS.APP_RELAUNCH, () => {
+    app.relaunch();
+    app.exit(0);
+  });
+
   mainWindow?.on("resize", () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const [width, height] = mainWindow.getSize();

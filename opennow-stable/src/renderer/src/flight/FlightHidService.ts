@@ -109,6 +109,23 @@ export class FlightHidService {
         console.log("[Flight] requestDevice cancelled by user");
         return [];
       }
+      if (e instanceof TypeError || (e instanceof DOMException && e.message.includes("filter"))) {
+        console.warn("[Flight] usagePage/usage filter not supported, falling back to vendorId filter");
+        try {
+          const KNOWN_VENDORS = [0x044F, 0x06A3, 0x046D, 0x0738, 0x231D];
+          const devices = await navigator.hid.requestDevice({
+            filters: KNOWN_VENDORS.map((vendorId) => ({ vendorId })),
+          });
+          for (const d of devices) logDevice(d, "request-fallback");
+          return devices;
+        } catch (fallbackErr) {
+          if (fallbackErr instanceof DOMException && fallbackErr.name === "NotAllowedError") {
+            return [];
+          }
+          console.warn("[Flight] Fallback requestDevice failed:", fallbackErr);
+          throw fallbackErr;
+        }
+      }
       console.warn("[Flight] requestDevice failed:", e);
       throw e;
     }

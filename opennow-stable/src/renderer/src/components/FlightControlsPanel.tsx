@@ -133,7 +133,7 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
       await refreshDevices(showAllDevices);
       await loadAllProfiles();
     })();
-  }, [enabled, webHidSupported]);
+  }, [enabled, webHidSupported, showAllDevices]);
 
   useEffect(() => {
     if (!enabled || !webHidSupported) return;
@@ -370,7 +370,8 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
       {enabled && !webHidSupported && (
         <div className="settings-row">
           <span className="settings-subtle-hint" style={{ color: "var(--error)" }}>
-            WebHID is not available in this browser / Electron version.
+            WebHID is not supported on this platform. Flight controller pairing is disabled.
+            {navigator.platform.toLowerCase().includes("linux") && " Linux may require Electron with --enable-features=WebHID."}
           </span>
         </div>
       )}
@@ -590,6 +591,12 @@ export function FlightControlsPanel({ settings, onSettingChange }: FlightControl
                   <h3>
                     <Joystick size={14} />
                     Live Input — Slot {activeTab + 1}
+                    <span style={{
+                      display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+                      background: slotInputAlive ? "var(--success)" : "var(--ink-muted)",
+                      marginLeft: 6, verticalAlign: "middle",
+                      transition: "background 0.2s",
+                    }} title={slotInputAlive ? "Receiving data" : "Idle"} />
                   </h3>
 
                   {slotLiveState.axes.length > 0 && (

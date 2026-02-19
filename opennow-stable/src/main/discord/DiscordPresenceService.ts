@@ -58,7 +58,7 @@ export class DiscordPresenceService {
       this.client = client;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      if (msg.includes("ENOENT") || msg.includes("Could not connect")) {
+      if (msg.includes("ENOENT") || msg.includes("Could not connect") || msg.includes("ECONNREFUSED") || msg.includes("EPIPE")) {
         console.log("[Discord] Discord not running, will retry later");
       } else {
         console.warn("[Discord] RPC connect failed:", msg);
