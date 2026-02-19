@@ -81,6 +81,7 @@ const shortcutDefaults = {
   shortcutTogglePointerLock: "F8",
   shortcutStopStream: "Ctrl+Shift+Q",
   shortcutToggleAntiAfk: "Ctrl+Shift+K",
+  shortcutToggleMic: "Ctrl+Shift+M",
 } as const;
 
 /* ── Aspect ratio helpers ─────────────────────────────────────────── */
@@ -765,12 +766,14 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
       settings.shortcutToggleStats === shortcutDefaults.shortcutToggleStats
       && settings.shortcutTogglePointerLock === shortcutDefaults.shortcutTogglePointerLock
       && settings.shortcutStopStream === shortcutDefaults.shortcutStopStream
-      && settings.shortcutToggleAntiAfk === shortcutDefaults.shortcutToggleAntiAfk,
+      && settings.shortcutToggleAntiAfk === shortcutDefaults.shortcutToggleAntiAfk
+      && settings.shortcutToggleMic === shortcutDefaults.shortcutToggleMic,
     [
       settings.shortcutToggleStats,
       settings.shortcutTogglePointerLock,
       settings.shortcutStopStream,
       settings.shortcutToggleAntiAfk,
+      settings.shortcutToggleMic,
     ]
   );
 
@@ -779,16 +782,19 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
     setTogglePointerLockInput(shortcutDefaults.shortcutTogglePointerLock);
     setStopStreamInput(shortcutDefaults.shortcutStopStream);
     setToggleAntiAfkInput(shortcutDefaults.shortcutToggleAntiAfk);
+    setMicToggleShortcutInput(shortcutDefaults.shortcutToggleMic);
     setToggleStatsError(false);
     setTogglePointerLockError(false);
     setStopStreamError(false);
     setToggleAntiAfkError(false);
+    setMicToggleShortcutError(false);
 
     const shortcutKeys = [
       "shortcutToggleStats",
       "shortcutTogglePointerLock",
       "shortcutStopStream",
       "shortcutToggleAntiAfk",
+      "shortcutToggleMic",
     ] as const;
 
     for (const key of shortcutKeys) {
@@ -1392,21 +1398,6 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
                     </label>
                   </div>
 
-                  <label className="settings-shortcut-row" style={{ marginTop: 6 }}>
-                    <span className="settings-shortcut-label">
-                      {settings.micMode === "push-to-talk" ? "Push-to-Talk Key" : "Toggle Mic"}
-                    </span>
-                    <input
-                      type="text"
-                      className={`settings-text-input settings-shortcut-input ${micToggleShortcutError ? "error" : ""}`}
-                      value={micToggleShortcutInput}
-                      onChange={(e) => setMicToggleShortcutInput(e.target.value)}
-                      onBlur={() => handleShortcutBlur("shortcutToggleMic", micToggleShortcutInput, setMicToggleShortcutInput, setMicToggleShortcutError)}
-                      onKeyDown={handleShortcutKeyDown}
-                      placeholder="Ctrl+Shift+M"
-                      spellCheck={false}
-                    />
-                  </label>
                 </>
               )}
             </div>
@@ -1483,15 +1474,31 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
                     spellCheck={false}
                   />
                 </label>
+
+                <label className="settings-shortcut-row">
+                  <span className="settings-shortcut-label">
+                    {settings.micMode === "push-to-talk" ? "Push-to-Talk Key" : "Toggle Mic"}
+                  </span>
+                  <input
+                    type="text"
+                    className={`settings-text-input settings-shortcut-input ${micToggleShortcutError ? "error" : ""}`}
+                    value={micToggleShortcutInput}
+                    onChange={(e) => setMicToggleShortcutInput(e.target.value)}
+                    onBlur={() => handleShortcutBlur("shortcutToggleMic", micToggleShortcutInput, setMicToggleShortcutInput, setMicToggleShortcutError)}
+                    onKeyDown={handleShortcutKeyDown}
+                    placeholder="Ctrl+Shift+M"
+                    spellCheck={false}
+                  />
+                </label>
               </div>
 
-              {(toggleStatsError || togglePointerLockError || stopStreamError || toggleAntiAfkError) && (
+              {(toggleStatsError || togglePointerLockError || stopStreamError || toggleAntiAfkError || micToggleShortcutError) && (
                 <span className="settings-input-hint">
                   Invalid shortcut. Use {shortcutExamples}
                 </span>
               )}
 
-              {!toggleStatsError && !togglePointerLockError && !stopStreamError && !toggleAntiAfkError && (
+              {!toggleStatsError && !togglePointerLockError && !stopStreamError && !toggleAntiAfkError && !micToggleShortcutError && (
                 <span className="settings-shortcut-hint">
                   {shortcutExamples}. Current stop shortcut: {formatShortcutForDisplay(settings.shortcutStopStream, isMac)}.
                 </span>
