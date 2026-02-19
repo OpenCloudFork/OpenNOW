@@ -11,6 +11,7 @@ export interface MicAudioState {
   level: number;
   deviceId: string;
   deviceLabel: string;
+  micTxActive: boolean;
 }
 
 export type MicStateListener = (state: MicAudioState) => void;
@@ -46,6 +47,9 @@ export class MicAudioService {
 
   private rtcSender: RTCRtpSender | null = null;
   private peerConnection: RTCPeerConnection | null = null;
+  private micTxActive = false;
+  private lastMicBytesSent = 0;
+  private micTxPollId: ReturnType<typeof setInterval> | null = null;
 
   getState(): MicAudioState {
     return {
@@ -53,6 +57,7 @@ export class MicAudioService {
       level: this.currentLevel,
       deviceId: this.deviceId,
       deviceLabel: this.currentDeviceLabel,
+      micTxActive: this.micTxActive,
     };
   }
 
@@ -256,12 +261,12 @@ export class MicAudioService {
 
   stopCapture(): void {
     this.stopLevelMonitor();
+    this.stopMicTxPoll();
 
-    if (this.rtcSender && this.peerConnection) {
+    if (this.rtcSender) {
       try {
-        this.peerConnection.removeTrack(this.rtcSender);
+        void this.rtcSender.replaceTrack(null);
       } catch { /* ignore */ }
-      this.rtcSender = null;
     }
 
     if (this.sourceNode) {
@@ -300,16 +305,23 @@ export class MicAudioService {
   }
 
   setPeerConnection(pc: RTCPeerConnection | null): void {
-    if (this.rtcSender && this.peerConnection) {
+    if (this.rtcSender) {
       try {
-        this.peerConnection.removeTrack(this.rtcSender);
+        void this.rtcSender.replaceTrack(null);
       } catch { /* ignore */ }
       this.rtcSender = null;
     }
+    this.stopMicTxPoll();
 
     this.peerConnection = pc;
 
     if (pc && this.outputTrack) {
+      this.attachToPeerConnection();
+    }
+  }
+
+  bindMicTransceiver(): void {
+    if (this.peerConnection && this.outputTrack && !this.rtcSender) {
       this.attachToPeerConnection();
     }
   }
@@ -320,29 +332,130 @@ export class MicAudioService {
     if (this.rtcSender) {
       try {
         void this.rtcSender.replaceTrack(this.outputTrack);
+        console.log("[Mic] Replaced track on existing sender");
+        this.startMicTxPoll();
         return;
       } catch { /* ignore */ }
     }
 
-    try {
-      this.rtcSender = this.peerConnection.addTrack(
-        this.outputTrack,
-        this.destinationNode!.stream,
-      );
+    const transceivers = this.peerConnection.getTransceivers();
+    this.logTransceiverState(transceivers);
 
-      if (this.rtcSender) {
-        const params = this.rtcSender.getParameters();
-        if (!params.encodings || params.encodings.length === 0) {
-          params.encodings = [{}];
-        }
-        params.encodings[0].maxBitrate = 64_000;
-        params.encodings[0].networkPriority = "high";
-        params.encodings[0].priority = "high";
-        void this.rtcSender.setParameters(params).catch(() => { /* ignore */ });
-      }
-    } catch (err) {
-      console.error("[Mic] Failed to attach track to peer connection:", err);
+    if (transceivers.length === 0) {
+      console.log("[Mic] No transceivers available yet (SDP not negotiated)");
+      return;
     }
+
+    let micTransceiver: RTCRtpTransceiver | null = null;
+
+    for (const t of transceivers) {
+      const kind = t.receiver.track?.kind ?? t.sender.track?.kind;
+      if (kind === "audio" && (t.direction === "sendonly" || t.direction === "sendrecv")) {
+        micTransceiver = t;
+        console.log(`[Mic] Found mic transceiver by direction: mid=${t.mid}, direction=${t.direction}`);
+        break;
+      }
+    }
+
+    if (!micTransceiver && transceivers.length > 2) {
+      const t = transceivers[2];
+      const kind = t.receiver.track?.kind ?? t.sender.track?.kind;
+      if (kind === "audio") {
+        micTransceiver = t;
+        console.log(`[Mic] Found mic transceiver by index 2 fallback: mid=${t.mid}, direction=${t.direction}`);
+      }
+    }
+
+    if (!micTransceiver) {
+      for (const t of transceivers) {
+        const kind = t.receiver.track?.kind ?? t.sender.track?.kind;
+        if (kind === "audio" && !t.sender.track && t.direction !== "recvonly") {
+          micTransceiver = t;
+          console.log(`[Mic] Found mic transceiver by no-track fallback: mid=${t.mid}, direction=${t.direction}`);
+          break;
+        }
+      }
+    }
+
+    if (!micTransceiver) {
+      console.warn("[Mic] Could not find mic transceiver - mic audio will NOT transmit upstream");
+      return;
+    }
+
+    try {
+      void micTransceiver.sender.replaceTrack(this.outputTrack);
+      this.rtcSender = micTransceiver.sender;
+
+      const params = this.rtcSender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}];
+      }
+      params.encodings[0].maxBitrate = 64_000;
+      params.encodings[0].networkPriority = "high";
+      params.encodings[0].priority = "high";
+      void this.rtcSender.setParameters(params).catch(() => { /* ignore */ });
+
+      console.log(`[Mic] Track attached to negotiated transceiver mid=${micTransceiver.mid}, direction=${micTransceiver.direction}`);
+      this.startMicTxPoll();
+    } catch (err) {
+      console.error("[Mic] Failed to attach track to mic transceiver:", err);
+    }
+  }
+
+  private logTransceiverState(transceivers: RTCRtpTransceiver[]): void {
+    console.log(`[Mic] === Transceiver diagnostics (${transceivers.length} transceivers) ===`);
+    for (let i = 0; i < transceivers.length; i++) {
+      const t = transceivers[i];
+      console.log(
+        `[Mic]   [${i}] mid=${t.mid} direction=${t.direction} currentDirection=${t.currentDirection}` +
+        ` sender.track=${t.sender.track ? `${t.sender.track.kind}(enabled=${t.sender.track.enabled})` : "null"}` +
+        ` receiver.track=${t.receiver.track ? `${t.receiver.track.kind}(enabled=${t.receiver.track.enabled})` : "null"}`
+      );
+    }
+  }
+
+  private startMicTxPoll(): void {
+    this.stopMicTxPoll();
+    if (!this.peerConnection || !this.rtcSender) return;
+
+    this.micTxPollId = setInterval(() => {
+      void this.pollMicTxStats();
+    }, 1000);
+  }
+
+  private stopMicTxPoll(): void {
+    if (this.micTxPollId !== null) {
+      clearInterval(this.micTxPollId);
+      this.micTxPollId = null;
+    }
+    this.micTxActive = false;
+    this.lastMicBytesSent = 0;
+  }
+
+  private async pollMicTxStats(): Promise<void> {
+    if (!this.peerConnection || !this.rtcSender) return;
+
+    try {
+      const report = await this.peerConnection.getStats(this.rtcSender);
+      for (const entry of report.values()) {
+        const stats = entry as unknown as Record<string, unknown>;
+        if (entry.type === "outbound-rtp" && stats.kind === "audio") {
+          const bytesSent = Number(stats.bytesSent ?? 0);
+          const packetsSent = Number(stats.packetsSent ?? 0);
+          const mid = String(stats.mid ?? "");
+          const wasActive = this.micTxActive;
+          this.micTxActive = bytesSent > this.lastMicBytesSent;
+
+          if (this.micTxActive !== wasActive) {
+            console.log(`[Mic] TX ${this.micTxActive ? "Active" : "Idle"} — bytesSent=${bytesSent} packetsSent=${packetsSent} mid=${mid}`);
+            this.emit();
+          }
+
+          this.lastMicBytesSent = bytesSent;
+          break;
+        }
+      }
+    } catch { /* ignore stats errors */ }
   }
 
   private startLevelMonitor(): void {
@@ -442,8 +555,10 @@ export class MicAudioService {
 
   dispose(): void {
     this.stopCapture();
+    this.stopMicTxPoll();
     this.removeDeviceChangeListener();
     this.listeners.clear();
+    this.rtcSender = null;
     this.peerConnection = null;
   }
 }

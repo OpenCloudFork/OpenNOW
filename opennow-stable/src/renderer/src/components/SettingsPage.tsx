@@ -78,7 +78,7 @@ const shortcutDefaults = {
   shortcutStopStream: "Ctrl+Shift+Q",
   shortcutToggleAntiAfk: "Ctrl+Shift+K",
   shortcutToggleMicrophone: "Ctrl+Shift+M",
-} as const;
+  shortcutToggleMic: "Ctrl+Shift+M",} as const;
 
 const microphoneModeOptions: Array<{ value: MicrophoneMode; label: string }> = [
   { value: "disabled", label: "Disabled" },
@@ -823,13 +823,13 @@ export function SettingsPage({ settings, regions, onSettingChange }: SettingsPag
       && settings.shortcutStopStream === shortcutDefaults.shortcutStopStream
       && settings.shortcutToggleAntiAfk === shortcutDefaults.shortcutToggleAntiAfk
       && settings.shortcutToggleMicrophone === shortcutDefaults.shortcutToggleMicrophone,
-    [
+      && settings.shortcutToggleMic === shortcutDefaults.shortcutToggleMic,    [
       settings.shortcutToggleStats,
       settings.shortcutTogglePointerLock,
       settings.shortcutStopStream,
       settings.shortcutToggleAntiAfk,
       settings.shortcutToggleMicrophone,
-    ]
+      settings.shortcutToggleMic,    ]
   );
 
   const handleResetShortcuts = useCallback(() => {
@@ -838,19 +838,19 @@ export function SettingsPage({ settings, regions, onSettingChange }: SettingsPag
     setStopStreamInput(shortcutDefaults.shortcutStopStream);
     setToggleAntiAfkInput(shortcutDefaults.shortcutToggleAntiAfk);
     setToggleMicrophoneInput(shortcutDefaults.shortcutToggleMicrophone);
-    setToggleStatsError(false);
+    setMicToggleShortcutInput(shortcutDefaults.shortcutToggleMic);    setToggleStatsError(false);
     setTogglePointerLockError(false);
     setStopStreamError(false);
     setToggleAntiAfkError(false);
     setToggleMicrophoneError(false);
-
+    setMicToggleShortcutError(false);
     const shortcutKeys = [
       "shortcutToggleStats",
       "shortcutTogglePointerLock",
       "shortcutStopStream",
       "shortcutToggleAntiAfk",
       "shortcutToggleMicrophone",
-    ] as const;
+      "shortcutToggleMic",    ] as const;
 
     for (const key of shortcutKeys) {
       const value = shortcutDefaults[key];
@@ -1432,21 +1432,6 @@ export function SettingsPage({ settings, regions, onSettingChange }: SettingsPag
                     </label>
                   </div>
 
-                  <label className="settings-shortcut-row" style={{ marginTop: 6 }}>
-                    <span className="settings-shortcut-label">
-                      {settings.micMode === "push-to-talk" ? "Push-to-Talk Key" : "Toggle Mic"}
-                    </span>
-                    <input
-                      type="text"
-                      className={`settings-text-input settings-shortcut-input ${micToggleShortcutError ? "error" : ""}`}
-                      value={micToggleShortcutInput}
-                      onChange={(e) => setMicToggleShortcutInput(e.target.value)}
-                      onBlur={() => handleShortcutBlur("shortcutToggleMic", micToggleShortcutInput, setMicToggleShortcutInput, setMicToggleShortcutError)}
-                      onKeyDown={handleShortcutKeyDown}
-                      placeholder="Ctrl+Shift+M"
-                      spellCheck={false}
-                    />
-                  </label>
                 </>
               )}
             </div>
@@ -1532,7 +1517,15 @@ export function SettingsPage({ settings, regions, onSettingChange }: SettingsPag
                     value={toggleMicrophoneInput}
                     onChange={(e) => setToggleMicrophoneInput(e.target.value)}
                     onBlur={() => handleShortcutBlur("shortcutToggleMicrophone", toggleMicrophoneInput, setToggleMicrophoneInput, setToggleMicrophoneError)}
-                    onKeyDown={handleShortcutKeyDown}
+                  <span className="settings-shortcut-label">
+                    {settings.micMode === "push-to-talk" ? "Push-to-Talk Key" : "Toggle Mic"}
+                  </span>
+                  <input
+                    type="text"
+                    className={`settings-text-input settings-shortcut-input ${micToggleShortcutError ? "error" : ""}`}
+                    value={micToggleShortcutInput}
+                    onChange={(e) => setMicToggleShortcutInput(e.target.value)}
+                    onBlur={() => handleShortcutBlur("shortcutToggleMic", micToggleShortcutInput, setMicToggleShortcutInput, setMicToggleShortcutError)}                    onKeyDown={handleShortcutKeyDown}
                     placeholder="Ctrl+Shift+M"
                     spellCheck={false}
                   />
@@ -1540,13 +1533,13 @@ export function SettingsPage({ settings, regions, onSettingChange }: SettingsPag
               </div>
 
               {(toggleStatsError || togglePointerLockError || stopStreamError || toggleAntiAfkError || toggleMicrophoneError) && (
-                <span className="settings-input-hint">
+              {(toggleStatsError || togglePointerLockError || stopStreamError || toggleAntiAfkError || micToggleShortcutError) && (                <span className="settings-input-hint">
                   Invalid shortcut. Use {shortcutExamples}
                 </span>
               )}
 
               {!toggleStatsError && !togglePointerLockError && !stopStreamError && !toggleAntiAfkError && !toggleMicrophoneError && (
-                <span className="settings-shortcut-hint">
+              {!toggleStatsError && !togglePointerLockError && !stopStreamError && !toggleAntiAfkError && !micToggleShortcutError && (                <span className="settings-shortcut-hint">
                   {shortcutExamples}. Stop: {formatShortcutForDisplay(settings.shortcutStopStream, isMac)}. Mic: {formatShortcutForDisplay(settings.shortcutToggleMicrophone, isMac)}.
                 </span>
               )}

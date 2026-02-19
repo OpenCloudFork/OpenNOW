@@ -164,7 +164,12 @@ export interface StreamDiagnostics {
   inputQueueDropCount: number;
   inputQueueMaxSchedulingDelayMs: number;
 
-  // System info
+  // HDR diagnostics
+  hdrState: HdrStreamState;
+
+  // Mic TX stats
+  micBytesSent: number;
+  micPacketsSent: number;  // System info
   gpuType: string;
   serverRegion: string;
 
@@ -550,7 +555,18 @@ export class GfnWebRtcClient {
     inputQueuePeakBufferedBytes: 0,
     inputQueueDropCount: 0,
     inputQueueMaxSchedulingDelayMs: 0,
-    gpuType: "",
+    micBytesSent: 0,
+    micPacketsSent: 0,
+    hdrState: {
+      status: "inactive",
+      bitDepth: 8,
+      colorPrimaries: "BT.709",
+      transferFunction: "SDR",
+      matrixCoefficients: "BT.709",
+      codecProfile: "",
+      overlayForcesSdr: false,
+      fallbackReason: null,
+    },    gpuType: "",
     serverRegion: "",
     micState: "uninitialized",
     micEnabled: false,
@@ -686,7 +702,18 @@ export class GfnWebRtcClient {
       inputQueuePeakBufferedBytes: 0,
       inputQueueDropCount: 0,
       inputQueueMaxSchedulingDelayMs: 0,
-      gpuType: this.gpuType,
+      micBytesSent: 0,
+      micPacketsSent: 0,
+      hdrState: {
+        status: "inactive",
+        bitDepth: 8,
+        colorPrimaries: "BT.709",
+        transferFunction: "SDR",
+        matrixCoefficients: "BT.709",
+        codecProfile: "",
+        overlayForcesSdr: false,
+        fallbackReason: null,
+      },      gpuType: this.gpuType,
       serverRegion: this.serverRegion,
       micState: this.micState,
       micEnabled: this.micManager?.isEnabled() ?? false,
@@ -961,6 +988,15 @@ export class GfnWebRtcClient {
 
     this.inputQueuePeakBufferedBytesWindow = reliableBufferedAmount;
     this.inputQueueMaxSchedulingDelayMsWindow = 0;
+
+    for (const entry of report.values()) {
+      const stats = entry as unknown as Record<string, unknown>;
+      if (entry.type === "outbound-rtp" && stats.kind === "audio") {
+        this.diagnostics.micBytesSent = Number(stats.bytesSent ?? 0);
+        this.diagnostics.micPacketsSent = Number(stats.packetsSent ?? 0);
+        break;
+      }
+    }
 
     this.emitStats();
   }
@@ -2657,6 +2693,11 @@ export class GfnWebRtcClient {
     //     Must be called after setRemoteDescription (which creates the transceiver)
     //     but before createAnswer (which generates the answer SDP).
     this.applyCodecPreferences(pc, effectiveCodec, preferredHevcProfileId);
+
+    if (this.micService) {
+      this.log("Binding mic transceiver after setRemoteDescription");
+      this.micService.bindMicTransceiver();
+    }
 
     // 4. Create answer, munge SDP, and set local description
     this.log("Creating answer...");
