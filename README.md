@@ -76,7 +76,7 @@ OpenNOW is a community-built desktop client for [NVIDIA GeForce NOW](https://www
 | **Input** | | | |
 | Keyboard + Mouse | ✅ | ✅ | Full input over GFN data channels |
 | Gamepad Support | ✅ | ✅ | Up to 4 controllers simultaneously |
-| Flight Controls | ❌ | ✅ | Added in official client v2.0.81 |
+| Flight Controls | ✅ | ✅ | Added in official client v2.0.81 |
 | Mouse Sensitivity | ✅ | ❌ | OpenNOW-exclusive setting |
 | Clipboard Paste | ✅ | ❌ | Paste text into cloud session |
 | **Features** | | | |
@@ -84,7 +84,7 @@ OpenNOW is a community-built desktop client for [NVIDIA GeForce NOW](https://www
 | Game Library + Catalog | ✅ | ✅ | Main catalog, library, and public games |
 | Alliance Partners | ✅ | ✅ | NVIDIA + partner providers |
 | Audio Playback | ✅ | ✅ | |
-| Microphone Support | 📋 | ✅ | Planned for future release |
+| Microphone Support | ✅ | ✅ | |
 | Instant Replay | 📋 | ✅ | Planned for future release |
 | Screenshots | 📋 | ✅ | Planned for future release |
 | Stats Overlay | ✅ | ✅ | Detailed: RTT, decode, render, jitter, loss, input queue |
@@ -94,7 +94,7 @@ OpenNOW is a community-built desktop client for [NVIDIA GeForce NOW](https://www
 | Subscription Info | ✅ | ✅ | Hours, tier, entitled resolutions |
 | Region Selection | ✅ | ✅ | Dynamic region discovery |
 | Install-to-Play | ✅ | ✅ | For games not in standard catalog |
-| Discord Integration | ❌ | ✅ | |
+| Discord Integration | ✅ | ✅ | |
 | **Platform Support** | | | |
 | Windows | ✅ | ✅ | NSIS installer + portable |
 | macOS (x64 + ARM) | ✅ | ✅ | Universal builds |
