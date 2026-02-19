@@ -15,6 +15,8 @@ import type {
   VideoCodec,
   DiscordPresencePayload,
   FlightSlotConfig,
+  HdrCapability,
+  HdrStreamState,
 } from "@shared/gfn";
 import { defaultFlightSlots } from "@shared/gfn";
 
@@ -25,6 +27,11 @@ import {
 } from "./gfn/webrtcClient";
 import { formatShortcutForDisplay, isShortcutMatch, normalizeShortcut } from "./shortcuts";
 import { getFlightHidService } from "./flight/FlightHidService";
+import {
+  probeHdrCapability,
+  shouldEnableHdr,
+  buildInitialHdrState,
+} from "./gfn/hdrCapability";
 
 // UI Components
 import { LoginScreen } from "./components/LoginScreen";
@@ -113,6 +120,7 @@ function defaultDiagnostics(): StreamDiagnostics {
     inputQueuePeakBufferedBytes: 0,
     inputQueueDropCount: 0,
     inputQueueMaxSchedulingDelayMs: 0,
+    hdrState: buildInitialHdrState(),
     gpuType: "",
     serverRegion: "",
   };
@@ -277,6 +285,7 @@ export function App(): JSX.Element {
     flightControlsEnabled: false,
     flightControlsSlot: 3,
     flightSlots: defaultFlightSlots(),
+    hdrStreaming: "off",
   });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [regions, setRegions] = useState<StreamRegion[]>([]);
@@ -301,6 +310,8 @@ export function App(): JSX.Element {
   const [sessionStartedAtMs, setSessionStartedAtMs] = useState<number | null>(null);
   const [sessionElapsedSeconds, setSessionElapsedSeconds] = useState(0);
   const [streamWarning, setStreamWarning] = useState<StreamWarningState | null>(null);
+  const [hdrCapability, setHdrCapability] = useState<HdrCapability | null>(null);
+  const [hdrWarningShown, setHdrWarningShown] = useState(false);
 
   // Refs
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -387,6 +398,13 @@ export function App(): JSX.Element {
         const loadedSettings = await window.openNow.getSettings();
         setSettings(loadedSettings);
         setSettingsLoaded(true);
+
+        probeHdrCapability().then((cap) => {
+          setHdrCapability(cap);
+          console.log("[HDR] Capability probe:", cap);
+        }).catch((e) => {
+          console.warn("[HDR] Capability probe failed:", e);
+        });
 
         // Load providers and session (force refresh on startup restore)
         setStartupStatusMessage("Restoring saved session and refreshing token...");
@@ -732,12 +750,24 @@ export function App(): JSX.Element {
           }
 
           if (clientRef.current) {
+            let hdrEnabledForStream = false;
+            if (hdrCapability && settings.hdrStreaming !== "off") {
+              const decision = shouldEnableHdr(settings.hdrStreaming, hdrCapability, settings.colorQuality);
+              hdrEnabledForStream = decision.enable;
+              console.log(`[HDR] Stream decision: enable=${decision.enable}, reason=${decision.reason}`);
+              if (!decision.enable && settings.hdrStreaming === "on" && !hdrWarningShown) {
+                setHdrWarningShown(true);
+                console.warn(`[HDR] Falling back to SDR: ${decision.reason}`);
+              }
+            }
+
             await clientRef.current.handleOffer(event.sdp, activeSession, {
               codec: settings.codec,
               colorQuality: settings.colorQuality,
               resolution: settings.resolution,
               fps: settings.fps,
               maxBitrateKbps: settings.maxBitrateMbps * 1000,
+              hdrEnabled: hdrEnabledForStream,
             });
             setLaunchError(null);
             setStreamStatus("streaming");
@@ -1515,6 +1545,7 @@ export function App(): JSX.Element {
             settings={settings}
             regions={regions}
             onSettingChange={updateSetting}
+            hdrCapability={hdrCapability}
           />
         )}
       </main>

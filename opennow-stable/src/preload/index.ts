@@ -85,6 +85,7 @@ const api: PreloadApi = {
     ipcRenderer.invoke(IPC_CHANNELS.FLIGHT_DELETE_PROFILE, vidPid, gameId),
   flightGetAllProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.FLIGHT_GET_ALL_PROFILES),
   flightResetProfile: (vidPid: string) => ipcRenderer.invoke(IPC_CHANNELS.FLIGHT_RESET_PROFILE, vidPid),
+  getOsHdrInfo: () => ipcRenderer.invoke(IPC_CHANNELS.HDR_GET_OS_INFO),
 };
 
 contextBridge.exposeInMainWorld("openNow", api);

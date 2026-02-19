@@ -1,7 +1,7 @@
 import { app } from "electron";
 import { join } from "node:path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import type { VideoCodec, ColorQuality, VideoAccelerationPreference, FlightSlotConfig } from "@shared/gfn";
+import type { VideoCodec, ColorQuality, VideoAccelerationPreference, FlightSlotConfig, HdrStreamingMode } from "@shared/gfn";
 import { defaultFlightSlots } from "@shared/gfn";
 
 export interface Settings {
@@ -47,6 +47,8 @@ export interface Settings {
   flightControlsSlot: number;
   /** Per-slot flight configurations */
   flightSlots: FlightSlotConfig[];
+  /** HDR streaming mode: off, auto, on */
+  hdrStreaming: HdrStreamingMode;
 }
 
 const defaultStopShortcut = "Ctrl+Shift+Q";
@@ -76,6 +78,7 @@ const DEFAULT_SETTINGS: Settings = {
   flightControlsEnabled: false,
   flightControlsSlot: 3,
   flightSlots: defaultFlightSlots(),
+  hdrStreaming: "off",
 };
 
 export class SettingsManager {

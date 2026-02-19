@@ -1,6 +1,33 @@
 export type VideoCodec = "H264" | "H265" | "AV1";
 export type VideoAccelerationPreference = "auto" | "hardware" | "software";
 
+export type HdrStreamingMode = "off" | "auto" | "on";
+
+export type HdrPlatformSupport = "supported" | "best_effort" | "unsupported" | "unknown";
+
+export type HdrActiveStatus = "active" | "inactive" | "unsupported" | "fallback_sdr";
+
+export interface HdrCapability {
+  platform: "windows" | "macos" | "linux" | "unknown";
+  platformSupport: HdrPlatformSupport;
+  osHdrEnabled: boolean;
+  displayHdrCapable: boolean;
+  decoder10BitCapable: boolean;
+  hdrColorSpaceSupported: boolean;
+  notes: string[];
+}
+
+export interface HdrStreamState {
+  status: HdrActiveStatus;
+  bitDepth: 8 | 10;
+  colorPrimaries: "BT.709" | "BT.2020" | "unknown";
+  transferFunction: "SDR" | "PQ" | "HLG" | "unknown";
+  matrixCoefficients: "BT.709" | "BT.2020" | "unknown";
+  codecProfile: string;
+  overlayForcesSdr: boolean;
+  fallbackReason: string | null;
+}
+
 /** Color quality (bit depth + chroma subsampling), matching Rust ColorQuality enum */
 export type ColorQuality = "8bit_420" | "8bit_444" | "10bit_420" | "10bit_444";
 
@@ -46,6 +73,7 @@ export interface Settings {
   flightControlsEnabled: boolean;
   flightControlsSlot: number;
   flightSlots: FlightSlotConfig[];
+  hdrStreaming: HdrStreamingMode;
 }
 
 export interface LoginProvider {
@@ -330,6 +358,7 @@ export interface OpenNowApi {
   flightDeleteProfile(vidPid: string, gameId?: string): Promise<void>;
   flightGetAllProfiles(): Promise<FlightProfile[]>;
   flightResetProfile(vidPid: string): Promise<FlightProfile | null>;
+  getOsHdrInfo(): Promise<{ osHdrEnabled: boolean; platform: string }>;
 }
 
 export type FlightAxisTarget =

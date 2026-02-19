@@ -41,6 +41,7 @@ import { GfnSignalingClient } from "./gfn/signaling";
 import { isSessionError, SessionError } from "./gfn/errorCodes";
 import { DiscordPresenceService } from "./discord/DiscordPresenceService";
 import { FlightProfileManager } from "./flight/FlightProfiles";
+import { getOsHdrInfo } from "./hdr/hdrDetect";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -521,6 +522,10 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.FLIGHT_RESET_PROFILE, (_event, vidPid: string) => {
     return flightProfileManager.resetProfile(vidPid);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.HDR_GET_OS_INFO, () => {
+    return getOsHdrInfo();
   });
 
   mainWindow?.on("resize", () => {

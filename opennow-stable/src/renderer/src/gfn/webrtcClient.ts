@@ -5,6 +5,7 @@ import type {
   SessionInfo,
   VideoCodec,
   FlightGamepadState,
+  HdrStreamState,
 } from "@shared/gfn";
 
 import {
@@ -37,6 +38,7 @@ interface OfferSettings {
   resolution: string;
   fps: number;
   maxBitrateKbps: number;
+  hdrEnabled: boolean;
 }
 
 interface KeyStrokeSpec {
@@ -160,6 +162,9 @@ export interface StreamDiagnostics {
   inputQueuePeakBufferedBytes: number;
   inputQueueDropCount: number;
   inputQueueMaxSchedulingDelayMs: number;
+
+  // HDR diagnostics
+  hdrState: HdrStreamState;
 
   // System info
   gpuType: string;
@@ -505,6 +510,7 @@ export class GfnWebRtcClient {
   private currentCodec = "";
   private currentResolution = "";
   private isHdr = false;
+  private hdrEnabledForSession = false;
   private videoDecodeStallWarningSent = false;
   private serverRegion = "";
   private gpuType = "";
@@ -534,6 +540,16 @@ export class GfnWebRtcClient {
     inputQueuePeakBufferedBytes: 0,
     inputQueueDropCount: 0,
     inputQueueMaxSchedulingDelayMs: 0,
+    hdrState: {
+      status: "inactive",
+      bitDepth: 8,
+      colorPrimaries: "BT.709",
+      transferFunction: "SDR",
+      matrixCoefficients: "BT.709",
+      codecProfile: "",
+      overlayForcesSdr: false,
+      fallbackReason: null,
+    },
     gpuType: "",
     serverRegion: "",
   };
@@ -626,6 +642,7 @@ export class GfnWebRtcClient {
     this.currentCodec = "";
     this.currentResolution = "";
     this.isHdr = false;
+    this.hdrEnabledForSession = false;
     this.videoDecodeStallWarningSent = false;
     this.diagnostics = {
       connectionState: this.pc?.connectionState ?? "closed",
@@ -652,6 +669,16 @@ export class GfnWebRtcClient {
       inputQueuePeakBufferedBytes: 0,
       inputQueueDropCount: 0,
       inputQueueMaxSchedulingDelayMs: 0,
+      hdrState: {
+        status: "inactive",
+        bitDepth: 8,
+        colorPrimaries: "BT.709",
+        transferFunction: "SDR",
+        matrixCoefficients: "BT.709",
+        codecProfile: "",
+        overlayForcesSdr: false,
+        fallbackReason: null,
+      },
       gpuType: this.gpuType,
       serverRegion: this.serverRegion,
     };
@@ -858,11 +885,52 @@ export class GfnWebRtcClient {
 
         // Check for HDR in SDP fmtp line
         this.isHdr = sdpFmtpLine.includes("transfer-characteristics=16") ||
+          sdpFmtpLine.includes("profile-id=2") ||
           sdpFmtpLine.includes("hdr") ||
           sdpFmtpLine.includes("HDR");
 
         this.diagnostics.codec = this.currentCodec;
         this.diagnostics.isHdr = this.isHdr;
+
+        if (this.hdrEnabledForSession && this.isHdr) {
+          const profileStr = sdpFmtpLine.includes("profile-id=2")
+            ? `${this.currentCodec} Main10`
+            : sdpFmtpLine.includes("profile=2")
+              ? `${this.currentCodec} 10-bit`
+              : `${this.currentCodec}`;
+          this.diagnostics.hdrState = {
+            status: "active",
+            bitDepth: 10,
+            colorPrimaries: "BT.2020",
+            transferFunction: "PQ",
+            matrixCoefficients: "BT.2020",
+            codecProfile: profileStr,
+            overlayForcesSdr: false,
+            fallbackReason: null,
+          };
+        } else if (this.hdrEnabledForSession && !this.isHdr) {
+          this.diagnostics.hdrState = {
+            status: "fallback_sdr",
+            bitDepth: 8,
+            colorPrimaries: "BT.709",
+            transferFunction: "SDR",
+            matrixCoefficients: "BT.709",
+            codecProfile: this.currentCodec,
+            overlayForcesSdr: false,
+            fallbackReason: "Stream did not negotiate HDR (no PQ/BT.2020 in codec params)",
+          };
+        } else {
+          this.diagnostics.hdrState = {
+            status: "inactive",
+            bitDepth: sdpFmtpLine.includes("profile-id=2") ? 10 : 8,
+            colorPrimaries: "BT.709",
+            transferFunction: "SDR",
+            matrixCoefficients: "BT.709",
+            codecProfile: this.currentCodec,
+            overlayForcesSdr: false,
+            fallbackReason: null,
+          };
+        }
       }
 
       // Get video dimensions from track settings if available
@@ -2486,8 +2554,10 @@ export class GfnWebRtcClient {
     this.log(`Signaling: server=${session.signalingServer}, url=${session.signalingUrl}`);
     this.log(`MediaConnectionInfo: ${session.mediaConnectionInfo ? `ip=${session.mediaConnectionInfo.ip}, port=${session.mediaConnectionInfo.port}` : "NONE"}`);
     this.log(
-      `Settings: codec=${settings.codec}, colorQuality=${settings.colorQuality}, resolution=${settings.resolution}, fps=${settings.fps}, maxBitrate=${settings.maxBitrateKbps}kbps`,
+      `Settings: codec=${settings.codec}, colorQuality=${settings.colorQuality}, resolution=${settings.resolution}, fps=${settings.fps}, maxBitrate=${settings.maxBitrateKbps}kbps, hdr=${settings.hdrEnabled}`,
     );
+
+    this.hdrEnabledForSession = settings.hdrEnabled;
     this.log(`ICE servers: ${session.iceServers.length} (${session.iceServers.map(s => s.urls.join(",")).join(" | ")})`);
     this.log(`Offer SDP length: ${offerSdp.length} chars`);
     // Log full offer SDP for ICE debugging
@@ -2760,6 +2830,7 @@ export class GfnWebRtcClient {
       codec: effectiveCodec,
       colorQuality: settings.colorQuality,
       credentials,
+      hdrEnabled: settings.hdrEnabled,
     });
 
     await window.openNow.sendAnswer({
