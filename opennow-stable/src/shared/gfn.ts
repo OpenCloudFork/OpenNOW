@@ -5,6 +5,8 @@ export type HdrStreamingMode = "off" | "auto" | "on";
 
 export type MicMode = "off" | "on" | "push-to-talk";
 
+export type HevcCompatMode = "auto" | "force_h264" | "force_hevc" | "hevc_software";
+
 export interface MicSettings {
   micMode: MicMode;
   micDeviceId: string;
@@ -101,6 +103,7 @@ export interface Settings {
   micAutoGainControl: boolean;
   micEchoCancellation: boolean;
   shortcutToggleMic: string;
+  hevcCompatMode: HevcCompatMode;
 }
 
 export interface LoginProvider {

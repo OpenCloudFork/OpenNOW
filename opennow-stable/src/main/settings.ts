@@ -1,7 +1,7 @@
 import { app } from "electron";
 import { join } from "node:path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import type { VideoCodec, ColorQuality, VideoAccelerationPreference, FlightSlotConfig, HdrStreamingMode, MicMode } from "@shared/gfn";
+import type { VideoCodec, ColorQuality, VideoAccelerationPreference, FlightSlotConfig, HdrStreamingMode, MicMode, HevcCompatMode } from "@shared/gfn";
 import { defaultFlightSlots } from "@shared/gfn";
 
 export interface Settings {
@@ -63,6 +63,8 @@ export interface Settings {
   micEchoCancellation: boolean;
   /** Toggle mic on/off shortcut (works in-stream) */
   shortcutToggleMic: string;
+  /** HEVC compatibility mode: auto, force_h264, force_hevc, hevc_software */
+  hevcCompatMode: HevcCompatMode;
 }
 
 const defaultStopShortcut = "Ctrl+Shift+Q";
@@ -100,6 +102,7 @@ const DEFAULT_SETTINGS: Settings = {
   micAutoGainControl: true,
   micEchoCancellation: true,
   shortcutToggleMic: "Ctrl+Shift+M",
+  hevcCompatMode: "auto",
 };
 
 export class SettingsManager {

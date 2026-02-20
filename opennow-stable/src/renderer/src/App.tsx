@@ -309,6 +309,7 @@ export function App(): JSX.Element {
     micAutoGainControl: true,
     micEchoCancellation: true,
     shortcutToggleMic: DEFAULT_SHORTCUTS.shortcutToggleMic,
+    hevcCompatMode: "auto",
   });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [regions, setRegions] = useState<StreamRegion[]>([]);
@@ -796,6 +797,7 @@ export function App(): JSX.Element {
               fps: settings.fps,
               maxBitrateKbps: settings.maxBitrateMbps * 1000,
               hdrEnabled: hdrEnabledForStream,
+              hevcCompatMode: settings.hevcCompatMode,
             });
             setLaunchError(null);
             setStreamStatus("streaming");
