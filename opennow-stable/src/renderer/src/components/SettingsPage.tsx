@@ -20,7 +20,7 @@ import { formatShortcutForDisplay, normalizeShortcut } from "../shortcuts";
 import { FlightControlsPanel } from "./FlightControlsPanel";
 import { useToast } from "./Toast";
 import { probeHdrCapability } from "../gfn/hdrCapability";
-interface SettingsPageProps {
+import { probeHdrCapability, getHdrDetectionStatus, getHdrStatusLabel, type HdrDetectionStatus } from "../gfn/hdrCapability";interface SettingsPageProps {
   settings: Settings;
   regions: StreamRegion[];
   onSettingChange: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
@@ -455,7 +455,17 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
   const [hdrDiagTesting, setHdrDiagTesting] = useState(false);
   const [hdrDiagOpen, setHdrDiagOpen] = useState(false);
   const [hdrRefreshing, setHdrRefreshing] = useState(false);
-  const platformHardwareLabel = useMemo(() => {
+  const [hdrDetectionStatus, setHdrDetectionStatus] = useState<HdrDetectionStatus>(getHdrDetectionStatus);
+  const [hevcWarningShown, setHevcWarningShown] = useState(false);
+  const [platformInfo, setPlatformInfo] = useState<PlatformInfo | null>(null);
+
+  useEffect(() => {
+    const api = (window as unknown as { openNow: { getPlatformInfo: () => Promise<PlatformInfo> } }).openNow;
+    void api.getPlatformInfo().then(setPlatformInfo).catch(() => {});
+  }, []);
+
+  const isLinux = platformInfo?.platform === "linux";
+  const isLinuxArm = isLinux && (platformInfo?.arch === "arm64" || platformInfo?.arch === "arm");  const platformHardwareLabel = useMemo(() => {
     const platform = navigator.platform.toLowerCase();
     if (platform.includes("win")) return "D3D11 / DXVA";
     if (platform.includes("mac")) return "VideoToolbox";
@@ -482,8 +492,10 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
     try {
       const cap = await probeHdrCapability();
       setHdrDiagResult(cap);
+      setHdrDetectionStatus(getHdrDetectionStatus());
     } catch (err) {
       console.error("[HDR] Diagnostics failed:", err);
+      setHdrDetectionStatus(getHdrDetectionStatus());
     } finally {
       setHdrDiagTesting(false);
     }
@@ -491,11 +503,14 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
 
   const refreshHdrStatus = useCallback(async () => {
     setHdrRefreshing(true);
+    setHdrDetectionStatus("probing");
     try {
       const cap = await probeHdrCapability();
       setHdrDiagResult(cap);
+      setHdrDetectionStatus(getHdrDetectionStatus());
     } catch (err) {
       console.error("[HDR] Refresh failed:", err);
+      setHdrDetectionStatus(getHdrDetectionStatus());
     } finally {
       setHdrRefreshing(false);
     }
@@ -504,6 +519,7 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
   useEffect(() => {
     if (hdrCapability) {
       setHdrDiagResult(hdrCapability);
+      setHdrDetectionStatus(getHdrDetectionStatus());
     }
   }, [hdrCapability]);
 
@@ -884,7 +900,66 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
               </div>
             </div>
 
-            {/* Decoder preference */}
+            {/* HEVC Compatibility Mode */}
+            <div className="settings-row settings-row--column">
+              <label className="settings-label">HEVC Compatibility</label>
+              <div className="settings-chip-row">
+                {([
+                  { value: "auto" as const, label: "Auto" },
+                  { value: "force_h264" as const, label: "Force H.264" },
+                  { value: "force_hevc" as const, label: "Force HEVC" },
+                  { value: "hevc_software" as const, label: "HEVC Software" },
+                ] as const).map((option) => (
+                  <button
+                    key={`hevc-compat-${option.value}`}
+                    className={`settings-chip ${settings.hevcCompatMode === option.value ? "active" : ""}`}
+                    onClick={() => {
+                      handleChange("hevcCompatMode", option.value);
+                      if (!hevcWarningShown) setHevcWarningShown(true);
+                    }}
+                    onFocus={() => {
+                      if (!hevcWarningShown) setHevcWarningShown(true);
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {hevcWarningShown && (settings.codec === "H265" || settings.codec === "AV1") && (
+                <span className="settings-input-hint" style={{ color: "var(--warning)" }}>
+                  &#9888; HEVC compatibility mode is intended only for AMD Polaris/Vega GPUs (e.g., RX 400/500 series, Vega iGPUs). Other GPUs typically don&apos;t need this.
+                </span>
+              )}
+              <span className="settings-subtle-hint">
+                Auto disables HEVC on AMD Polaris/Vega GPUs (RX 550, Vega iGPU) to prevent green screen.
+              </span>
+            </div>
+
+            {/* Linux-only Hardware Decode Backend */}
+            {isLinux && (
+              <div className="settings-row settings-row--column">
+                <label className="settings-label">Hardware Decode Backend</label>
+                <div className="settings-chip-row">
+                  {([
+                    { value: "auto" as const, label: "Auto (recommended)" },
+                    { value: "vaapi" as const, label: "VA-API (force)" },
+                    { value: "v4l2" as const, label: "V4L2 (force)" },
+                    { value: "software" as const, label: "Software (force)" },
+                  ] as const).map((option) => (
+                    <button
+                      key={`vdb-${option.value}`}
+                      className={`settings-chip ${settings.videoDecodeBackend === option.value ? "active" : ""}`}
+                      onClick={() => handleChange("videoDecodeBackend", option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="settings-subtle-hint">
+                  Auto chooses VA-API on x64 Linux and V4L2 on Linux ARM. Applies after app restart.
+                </span>
+              </div>
+            )}            {/* Decoder preference */}
             <div className="settings-row settings-row--column">
               <label className="settings-label">Decoder</label>
               <div className="settings-chip-row">
@@ -1054,18 +1129,15 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
               </span>
             )}
 
-            {settings.hdrStreaming !== "off" && hdrDiagResult && (
+            {settings.hdrStreaming !== "off" && (
               (() => {
-                const cap = hdrDiagResult;
-                const statusLabel = cap.platformSupport === "supported" ? "Supported"
-                  : cap.platformSupport === "best_effort"
-                    ? (cap.platform === "windows" && !cap.osHdrEnabled && cap.displayHdrCapable
-                        ? "Available (OS HDR is Off)"
-                        : cap.platform === "macos" ? "Best Effort (macOS)" : "Best Effort")
-                    : cap.platform === "linux" ? "Not supported (Linux Electron limitation)"
-                    : "Unknown";
-                const statusColor = cap.platformSupport === "supported" ? "var(--success)"
-                  : cap.platformSupport === "best_effort" ? "var(--warning)" : "var(--error)";
+                const statusLabel = getHdrStatusLabel(settings.hdrStreaming, hdrDetectionStatus);
+                const statusColor =
+                  hdrDetectionStatus === "active" || hdrDetectionStatus === "supported"
+                    ? "var(--success)"
+                    : hdrDetectionStatus === "os_disabled" || hdrDetectionStatus === "probing" || hdrDetectionStatus === "idle"
+                      ? "var(--warning)"
+                      : "var(--error)";
 
                 return (
                   <div className="settings-row" style={{ alignItems: "center" }}>

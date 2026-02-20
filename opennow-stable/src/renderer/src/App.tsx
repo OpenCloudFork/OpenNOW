@@ -127,6 +127,8 @@ function defaultDiagnostics(): StreamDiagnostics {
     inputQueuePeakBufferedBytes: 0,
     inputQueueDropCount: 0,
     inputQueueMaxSchedulingDelayMs: 0,
+    micBytesSent: 0,
+    micPacketsSent: 0,
     hdrState: buildInitialHdrState(),
     gpuType: "",
     serverRegion: "",
