@@ -2006,6 +2006,7 @@ export class GfnWebRtcClient {
               pressedShift,
               pressedAltGr,
             });
+            event.stopPropagation();
             return;
           }
         }
@@ -2044,6 +2045,7 @@ export class GfnWebRtcClient {
         }
         this.heldTranslatedKeys.delete(event.code);
         event.preventDefault();
+        event.stopPropagation();
         return;
       }
 
