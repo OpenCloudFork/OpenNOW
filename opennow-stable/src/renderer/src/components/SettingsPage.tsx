@@ -1,4 +1,4 @@
-import { Monitor, Volume2, Mouse, Keyboard, Settings2, Globe, Save, Check, Search, X, Loader, Cpu, Zap, MessageSquare, Joystick, Sun, RefreshCw, RotateCcw, Mic, MicOff } from "lucide-react";
+import { Monitor, Volume2, Mouse, Settings2, Globe, Save, Check, Search, X, Loader, Cpu, Zap, MessageSquare, Joystick, Sun, RefreshCw, RotateCcw, Mic, MicOff } from "lucide-react";
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { JSX } from "react";
 
@@ -15,7 +15,6 @@ import type {
   MicDeviceInfo,
   PlatformInfo,
   VideoDecodeBackend,
-  KeyboardLayout,
 } from "@shared/gfn";
 import { colorQualityRequiresHevc } from "@shared/gfn";
 import { formatShortcutForDisplay, normalizeShortcut } from "../shortcuts";
@@ -1367,26 +1366,6 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
               </label>
             </div>
 
-            <div className="settings-row settings-row--column">
-              <div className="settings-row">
-                <label className="settings-label">
-                  <Keyboard size={14} style={{ marginRight: 6, opacity: 0.6 }} />
-                  Keyboard Layout
-                </label>
-              </div>
-              <div className="settings-seg">
-                {(["auto", "qwerty", "azerty", "qwertz"] as KeyboardLayout[]).map((l) => (
-                  <button
-                    key={l}
-                    className={`settings-seg-btn ${settings.keyboardLayout === l ? "active" : ""}`}
-                    onClick={() => handleChange("keyboardLayout", l)}
-                  >
-                    {l === "auto" ? "Auto" : l.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-              <span className="settings-hint">Auto uses the OS layout; override only if keys are wrong in the stream.</span>
-            </div>
 
             <div className="settings-row settings-row--column">
               <label className="settings-label">Microphone</label>

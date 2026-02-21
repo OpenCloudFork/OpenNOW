@@ -273,12 +273,7 @@ export function StreamView({
             {stats.hdrState.fallbackReason && <> · <span style={{ color: "var(--warning)" }}>{stats.hdrState.fallbackReason}</span></>}
           </div>
 
-          <div className="sv-stats-foot">
-            Keyboard: <strong>{stats.keyboardLayout.toUpperCase()}</strong>
-            {stats.detectedKeyboardLayout !== "unknown" && (
-              <> · detected {stats.detectedKeyboardLayout}</>
-            )}
-          </div>
+
         </div>
       )}
 

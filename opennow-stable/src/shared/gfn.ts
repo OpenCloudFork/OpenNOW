@@ -9,7 +9,6 @@ export type HevcCompatMode = "auto" | "force_h264" | "force_hevc" | "hevc_softwa
 
 export type VideoDecodeBackend = "auto" | "vaapi" | "v4l2" | "software";
 
-export type KeyboardLayout = "auto" | "qwerty" | "azerty" | "qwertz";
 
 export interface PlatformInfo {
   platform: string;
@@ -116,7 +115,6 @@ export interface Settings {
   videoDecodeBackend: VideoDecodeBackend;
   sessionClockShowEveryMinutes: number;
   sessionClockShowDurationSeconds: number;
-  keyboardLayout: KeyboardLayout;
 }
 
 export interface LoginProvider {
