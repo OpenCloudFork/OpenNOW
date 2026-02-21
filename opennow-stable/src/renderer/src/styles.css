@@ -1611,6 +1611,14 @@ body,
   padding: 6px 8px !important;
 }
 
+.mic-test-meter-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
 .mic-level-meter {
   flex: 1;
   height: 8px;
@@ -1628,6 +1636,17 @@ body,
   border-radius: 4px;
   transform-origin: left;
   transition: transform 60ms linear;
+}
+
+.mic-test-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.mic-test-error {
+  font-size: 0.72rem;
+  color: var(--error);
+  margin-top: 2px;
 }
 
 /* Codec Diagnostics */

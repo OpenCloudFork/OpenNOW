@@ -544,6 +544,8 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
   const [micToggleShortcutError, setMicToggleShortcutError] = useState(false);
   const micLevelRef = useRef<HTMLDivElement>(null);
   const [micTestLevel, setMicTestLevel] = useState(0);
+  const [micTestRunning, setMicTestRunning] = useState(false);
+  const [micTestError, setMicTestError] = useState<string | null>(null);
   const micTestStreamRef = useRef<MediaStream | null>(null);
   const micTestContextRef = useRef<AudioContext | null>(null);
   const micTestTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -582,6 +584,7 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
   }, [settings.shortcutToggleMic]);
 
   const startMicTest = useCallback(async () => {
+    setMicTestError(null);
     try {
       const constraints: MediaStreamConstraints = {
         audio: {
@@ -622,8 +625,18 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
         const db = 20 * Math.log10(Math.max(rms, 1e-10));
         setMicTestLevel(Math.max(0, Math.min(1, (db + 60) / 60)));
       }, 50);
-    } catch {
+
+      setMicTestRunning(true);
+    } catch (err: unknown) {
       setMicTestLevel(0);
+      setMicTestRunning(false);
+      if (err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) {
+        setMicTestError("Microphone permission denied");
+      } else if (err instanceof DOMException && (err.name === "NotFoundError" || err.name === "OverconstrainedError")) {
+        setMicTestError("No microphone found");
+      } else {
+        setMicTestError("Failed to access microphone");
+      }
     }
   }, [settings.micDeviceId, settings.micGain, settings.micNoiseSuppression, settings.micAutoGainControl, settings.micEchoCancellation]);
 
@@ -643,16 +656,12 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
     micTestAnalyserRef.current = null;
     micTestBufferRef.current = null;
     setMicTestLevel(0);
+    setMicTestRunning(false);
   }, []);
 
   useEffect(() => {
-    if (settings.micMode !== "off") {
-      void startMicTest();
-    } else {
-      stopMicTest();
-    }
     return () => stopMicTest();
-  }, [settings.micMode, settings.micDeviceId, settings.micNoiseSuppression, settings.micAutoGainControl, settings.micEchoCancellation, startMicTest, stopMicTest]);
+  }, [stopMicTest]);
 
   // Dynamic entitled resolutions from MES API
   const [entitledResolutions, setEntitledResolutions] = useState<EntitledResolution[]>([]);
@@ -1416,13 +1425,32 @@ export function SettingsPage({ settings, regions, onSettingChange, hdrCapability
 
                   <div className="settings-row" style={{ marginTop: 6 }}>
                     <label className="settings-label">Input Level</label>
-                    <div className="mic-level-meter">
-                      <div
-                        className="mic-level-meter-fill"
-                        ref={micLevelRef}
-                        style={{ transform: `scaleX(${micTestLevel})` }}
-                      />
+                    <div className="mic-test-meter-wrap">
+                      <div className="mic-level-meter">
+                        <div
+                          className="mic-level-meter-fill"
+                          ref={micLevelRef}
+                          style={{ transform: `scaleX(${micTestLevel})` }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="settings-shortcut-reset-btn mic-test-btn"
+                        onClick={() => {
+                          if (micTestRunning) {
+                            stopMicTest();
+                          } else {
+                            void startMicTest();
+                          }
+                        }}
+                      >
+                        {micTestRunning ? <MicOff size={12} /> : <Mic size={12} />}
+                        {micTestRunning ? "Stop" : "Test"}
+                      </button>
                     </div>
+                    {micTestError && (
+                      <span className="mic-test-error">{micTestError}</span>
+                    )}
                   </div>
 
                   <div className="settings-row" style={{ marginTop: 6 }}>
