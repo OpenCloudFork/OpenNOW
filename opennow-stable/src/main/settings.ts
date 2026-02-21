@@ -1,7 +1,7 @@
 import { app } from "electron";
 import { join } from "node:path";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import type { VideoCodec, ColorQuality, VideoAccelerationPreference, FlightSlotConfig, HdrStreamingMode, MicMode, HevcCompatMode, VideoDecodeBackend } from "@shared/gfn";
+import type { VideoCodec, ColorQuality, VideoAccelerationPreference, FlightSlotConfig, HdrStreamingMode, MicMode, HevcCompatMode, VideoDecodeBackend, KeyboardLayout } from "@shared/gfn";
 import { defaultFlightSlots } from "@shared/gfn";
 
 export interface Settings {
@@ -71,6 +71,8 @@ export interface Settings {
   sessionClockShowEveryMinutes: number;
   /** Duration in seconds to show session clock when periodically revealed */
   sessionClockShowDurationSeconds: number;
+  /** Keyboard layout: auto, qwerty, azerty, qwertz */
+  keyboardLayout: KeyboardLayout;
 }
 
 const defaultStopShortcut = "Ctrl+Shift+Q";
@@ -112,6 +114,7 @@ const DEFAULT_SETTINGS: Settings = {
   videoDecodeBackend: "auto",
   sessionClockShowEveryMinutes: 60,
   sessionClockShowDurationSeconds: 30,
+  keyboardLayout: "auto",
 };
 
 export class SettingsManager {

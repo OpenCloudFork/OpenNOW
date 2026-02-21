@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { JSX } from "react";
-import { Maximize, Minimize, Gamepad2, Loader2, LogOut, Clock3, AlertTriangle } from "lucide-react";
+import { Maximize, Minimize, Gamepad2, Loader2, LogOut, Clock3, AlertTriangle, Mic, MicOff } from "lucide-react";
+import type { MicStatus } from "@shared/gfn";
 import type { StreamDiagnostics } from "../gfn/webrtcClient";
 
 interface StreamViewProps {
@@ -34,10 +35,22 @@ interface StreamViewProps {
   } | null;
   isConnecting: boolean;
   gameTitle: string;
+  micStatus: MicStatus | null;
   onToggleFullscreen: () => void;
   onConfirmExit: () => void;
   onCancelExit: () => void;
   onEndSession: () => void;
+}
+
+function micLabel(status: MicStatus): string {
+  switch (status) {
+    case "active": return "Mic On";
+    case "muted": return "Mic Muted";
+    case "no-device": return "No Mic";
+    case "permission-denied": return "Mic Denied";
+    case "error": return "Mic Error";
+    default: return "";
+  }
 }
 
 function getRttColor(rttMs: number): string {
@@ -106,6 +119,7 @@ export function StreamView({
   streamWarning,
   isConnecting,
   gameTitle,
+  micStatus,
   onToggleFullscreen,
   onConfirmExit,
   onCancelExit,
@@ -258,6 +272,13 @@ export function StreamView({
             {stats.hdrState.overlayForcesSdr && <> · <span style={{ color: "var(--warning)" }}>Overlay forces SDR</span></>}
             {stats.hdrState.fallbackReason && <> · <span style={{ color: "var(--warning)" }}>{stats.hdrState.fallbackReason}</span></>}
           </div>
+
+          <div className="sv-stats-foot">
+            Keyboard: <strong>{stats.keyboardLayout.toUpperCase()}</strong>
+            {stats.detectedKeyboardLayout !== "unknown" && (
+              <> · detected {stats.detectedKeyboardLayout}</>
+            )}
+          </div>
         </div>
       )}
 
@@ -350,6 +371,17 @@ export function StreamView({
           <div className="sv-hint"><kbd>{shortcuts.toggleStats}</kbd><span>Stats</span></div>
           <div className="sv-hint"><kbd>{shortcuts.togglePointerLock}</kbd><span>Mouse lock</span></div>
           <div className="sv-hint"><kbd>{shortcuts.stopStream}</kbd><span>Stop</span></div>
+        </div>
+      )}
+
+      {/* Microphone status indicator — shown whenever mic is active or muted */}
+      {micStatus && micStatus !== "off" && !isConnecting && (
+        <div
+          className={`sv-mic ${micStatus === "active" ? "sv-mic--on" : "sv-mic--off"}`}
+          title={micLabel(micStatus)}
+        >
+          {micStatus === "active" ? <Mic size={14} /> : <MicOff size={14} />}
+          <span className="sv-mic-label">{micLabel(micStatus)}</span>
         </div>
       )}
 

@@ -23,6 +23,7 @@ import {
   GAMEPAD_MAX_CONTROLLERS,
   type GamepadInput,
 } from "./inputProtocol";
+import { remapVkForLayout } from "./keyboardLayout";
 import {
   buildNvstSdp,
   extractIceCredentials,
@@ -182,6 +183,10 @@ export interface StreamDiagnostics {
   // System info
   gpuType: string;
   serverRegion: string;
+
+  // Keyboard layout diagnostics
+  keyboardLayout: string;
+  detectedKeyboardLayout: string;
 }
 
 export interface StreamTimeWarning {
@@ -515,6 +520,9 @@ export class GfnWebRtcClient {
   private micService: MicAudioService | null = null;
   private micTransceiver: RTCRtpTransceiver | null = null;
 
+  // Effective keyboard layout for VK remapping (default: qwerty = no remap)
+  private effectiveKeyboardLayout: "qwerty" | "azerty" | "qwertz" = "qwerty";
+
   private partialReliableThresholdMs = GfnWebRtcClient.DEFAULT_PARTIAL_RELIABLE_THRESHOLD_MS;
   private inputQueuePeakBufferedBytesWindow = 0;
   private inputQueueMaxSchedulingDelayMsWindow = 0;
@@ -573,6 +581,8 @@ export class GfnWebRtcClient {
     },
     gpuType: "",
     serverRegion: "",
+    keyboardLayout: "qwerty",
+    detectedKeyboardLayout: "unknown",
   };
 
   constructor(private readonly options: ClientOptions) {
@@ -804,6 +814,8 @@ export class GfnWebRtcClient {
       },
       gpuType: this.gpuType,
       serverRegion: this.serverRegion,
+      keyboardLayout: this.effectiveKeyboardLayout,
+      detectedKeyboardLayout: this.diagnostics.detectedKeyboardLayout,
     };
     this.emitStats();
   }
@@ -2211,8 +2223,11 @@ export class GfnWebRtcClient {
         return;
       }
 
+      // Remap VK code for non-QWERTY layouts. Scancodes stay physical.
+      const remappedVk = remapVkForLayout(mapped.vk, this.effectiveKeyboardLayout);
+
       const payload = this.inputEncoder.encodeKeyDown({
-        keycode: mapped.vk,
+        keycode: remappedVk,
         scancode: mapped.scancode,
         modifiers: modifierFlags(event),
         // Use a fresh monotonic timestamp for keyboard events. In some
@@ -2256,8 +2271,9 @@ export class GfnWebRtcClient {
         return;
       }
       this.pressedKeys.delete(mapped.vk);
+      const remappedVkUp = remapVkForLayout(mapped.vk, this.effectiveKeyboardLayout);
       const payload = this.inputEncoder.encodeKeyUp({
-        keycode: mapped.vk,
+        keycode: remappedVkUp,
         scancode: mapped.scancode,
         modifiers: modifierFlags(event),
         timestampUs: timestampUs(),
@@ -2696,6 +2712,17 @@ export class GfnWebRtcClient {
     } catch (e) {
       this.log(`setCodecPreferences: failed (${String(e)}), falling back to SDP-only approach`);
     }
+  }
+
+  /** Update the effective keyboard layout for VK code remapping. */
+  setKeyboardLayout(layout: "qwerty" | "azerty" | "qwertz"): void {
+    this.effectiveKeyboardLayout = layout;
+    this.diagnostics.keyboardLayout = layout;
+  }
+
+  /** Update the detected keyboard layout (for diagnostics display). */
+  setDetectedKeyboardLayout(detected: string): void {
+    this.diagnostics.detectedKeyboardLayout = detected;
   }
 
   setMicService(service: MicAudioService | null): void {
