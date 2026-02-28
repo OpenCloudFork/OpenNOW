@@ -44,6 +44,7 @@ import { LibraryPage } from "./components/LibraryPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { StreamLoading } from "./components/StreamLoading";
 import { StreamView } from "./components/StreamView";
+import { useToast } from "./components/Toast";
 
 const codecOptions: VideoCodec[] = ["H264", "H265", "AV1"];
 const resolutionOptions = ["1280x720", "1920x1080", "2560x1440", "3840x2160", "2560x1080", "3440x1440"];
@@ -93,6 +94,13 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       { once: true },
     );
   });
+}
+
+function withJitterBackoffMs(attempt: number): number {
+  const cappedAttempt = Math.max(0, Math.min(5, attempt));
+  const baseMs = Math.min(10000, 1000 * (2 ** cappedAttempt));
+  const jitterMs = Math.floor(Math.random() * 300);
+  return baseMs + jitterMs;
 }
 
 function isNumericId(value: string | undefined): value is string {
@@ -257,6 +265,7 @@ function toLaunchErrorState(error: unknown, stage: StreamLoadingStatus): LaunchE
 }
 
 export function App(): JSX.Element {
+  const { showToast } = useToast();
   // Auth State
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [providers, setProviders] = useState<LoginProvider[]>([]);
@@ -349,7 +358,7 @@ export function App(): JSX.Element {
   const [provisioningElapsed, setProvisioningElapsed] = useState(0);
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState<string | null>(null);
   const [sessionClockVisible, setSessionClockVisible] = useState(true);
-
+  const [signalingReconnecting, setSignalingReconnecting] = useState(false);
 
   // Mic state for StreamView indicator
   const [micAudioState, setMicAudioState] = useState<MicAudioState | null>(null);
@@ -366,6 +375,7 @@ export function App(): JSX.Element {
   const pollAbortRef = useRef<AbortController | null>(null);
   const exitPromptResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const micServiceRef = useRef<MicAudioService | null>(null);
+  const reconnectNoticeActiveRef = useRef(false);
 
   // Session ref sync
   useEffect(() => {
@@ -408,14 +418,25 @@ export function App(): JSX.Element {
       setNavbarActiveSession(null);
       return;
     }
-    try {
-      const activeSessions = await window.openNow.getActiveSessions(token, effectiveStreamingBaseUrl);
-      const candidate = activeSessions.find((entry) => entry.status === 3 || entry.status === 2) ?? null;
-      setNavbarActiveSession(candidate);
-    } catch (error) {
-      console.warn("Failed to refresh active sessions:", error);
+
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const activeSessions = await window.openNow.getActiveSessions(token, effectiveStreamingBaseUrl);
+        const candidate = activeSessions.find((entry) => entry.status === 3 || entry.status === 2) ?? null;
+        setNavbarActiveSession(candidate);
+        return;
+      } catch (error) {
+        const finalAttempt = attempt >= maxAttempts - 1;
+        if (finalAttempt) {
+          console.warn("Failed to refresh active sessions:", error);
+          showToast("Could not refresh active sessions. Retrying later.", "warning");
+          return;
+        }
+        await sleep(withJitterBackoffMs(attempt));
+      }
     }
-  }, [authSession, effectiveStreamingBaseUrl]);
+  }, [authSession, effectiveStreamingBaseUrl, showToast]);
 
   useEffect(() => {
     if (!startupRefreshNotice) return;
@@ -885,22 +906,35 @@ export function App(): JSX.Element {
           }
         } else if (event.type === "remote-ice") {
           await clientRef.current?.addRemoteCandidate(event.candidate);
+        } else if (event.type === "connected") {
+          setSignalingReconnecting(false);
+          reconnectNoticeActiveRef.current = false;
         } else if (event.type === "disconnected") {
-          console.warn("Signaling disconnected:", event.reason);
-          clientRef.current?.dispose();
-          clientRef.current = null;
-          setStreamStatus("idle");
-          setSession(null);
-          setStreamingGame(null);
-          lastStreamGameTitleRef.current = null;
-          setLaunchError(null);
-          setSessionStartedAtMs(null);
-          setSessionElapsedSeconds(0);
-          setStreamWarning(null);
-          setEscHoldReleaseIndicator({ visible: false, progress: 0 });
-          setDiagnostics(defaultDiagnostics());
-          launchInFlightRef.current = false;
+          const connection = (navigator as Navigator & { connection?: { effectiveType?: string; downlink?: number; rtt?: number; saveData?: boolean } }).connection;
+          console.warn("Signaling disconnected:", {
+            reason: event.reason,
+            at: new Date().toISOString(),
+            online: navigator.onLine,
+            connection: connection ? {
+              effectiveType: connection.effectiveType,
+              downlink: connection.downlink,
+              rtt: connection.rtt,
+              saveData: connection.saveData,
+            } : "unavailable",
+          });
+          if (streamStatus !== "idle") {
+            setSignalingReconnecting(true);
+            if (!reconnectNoticeActiveRef.current) {
+              reconnectNoticeActiveRef.current = true;
+              showToast("Connection lost. Attempting to reconnect...", "warning");
+            }
+          }
         } else if (event.type === "error") {
+          if (event.message.includes("reconnect exhausted")) {
+            setSignalingReconnecting(false);
+            reconnectNoticeActiveRef.current = false;
+            showToast("Reconnect failed. End and relaunch the stream if this persists.", "error");
+          }
           console.error("Signaling error:", event.message);
         }
       } catch (error) {
@@ -909,7 +943,7 @@ export function App(): JSX.Element {
     });
 
     return () => unsubscribe();
-  }, [settings]);
+  }, [hdrCapability, hdrWarningShown, platformInfo, settings, showToast, streamStatus]);
 
   // Save settings when changed
   const updateSetting = useCallback(async <K extends keyof Settings>(key: K, value: Settings[K]) => {
@@ -1079,6 +1113,7 @@ export function App(): JSX.Element {
     setSessionStartedAtMs(Date.now());
     setSessionElapsedSeconds(0);
     setStreamWarning(null);
+    setSignalingReconnecting(false);
     setLaunchError(null);
     setStreamingGame(game);
     lastStreamGameTitleRef.current = game.title?.trim() || null;
@@ -1310,6 +1345,8 @@ export function App(): JSX.Element {
       setSessionStartedAtMs(null);
       setSessionElapsedSeconds(0);
       setStreamWarning(null);
+      setSignalingReconnecting(false);
+      reconnectNoticeActiveRef.current = false;
       setEscHoldReleaseIndicator({ visible: false, progress: 0 });
       setDiagnostics(defaultDiagnostics());
       setProvisioningElapsed(0);
@@ -1349,6 +1386,7 @@ export function App(): JSX.Element {
     setSessionStartedAtMs(Date.now());
     setSessionElapsedSeconds(0);
     setStreamWarning(null);
+    setSignalingReconnecting(false);
     lastStreamGameTitleRef.current = activeSessionGameTitle?.trim() || null;
     updateLoadingStep("setup");
 
@@ -1367,6 +1405,8 @@ export function App(): JSX.Element {
       setSessionStartedAtMs(null);
       setSessionElapsedSeconds(0);
       setStreamWarning(null);
+      setSignalingReconnecting(false);
+      reconnectNoticeActiveRef.current = false;
       setEscHoldReleaseIndicator({ visible: false, progress: 0 });
       setDiagnostics(defaultDiagnostics());
       void refreshNavbarActiveSession();
@@ -1413,6 +1453,8 @@ export function App(): JSX.Element {
       setSessionStartedAtMs(null);
       setSessionElapsedSeconds(0);
       setStreamWarning(null);
+    setSignalingReconnecting(false);
+      reconnectNoticeActiveRef.current = false;
       setEscHoldReleaseIndicator({ visible: false, progress: 0 });
       setDiagnostics(defaultDiagnostics());
       void refreshNavbarActiveSession();
@@ -1434,6 +1476,8 @@ export function App(): JSX.Element {
     setSessionStartedAtMs(null);
     setSessionElapsedSeconds(0);
     setStreamWarning(null);
+    setSignalingReconnecting(false);
+    reconnectNoticeActiveRef.current = false;
     setEscHoldReleaseIndicator({ visible: false, progress: 0 });
     setDiagnostics(defaultDiagnostics());
     void refreshNavbarActiveSession();
@@ -1542,6 +1586,14 @@ export function App(): JSX.Element {
       }
 
       if (isShortcutMatch(e, shortcuts.stopStream)) {
+        const plainEscape = (e.key === "Escape" || e.code === "Escape")
+          && !e.ctrlKey
+          && !e.metaKey
+          && !e.altKey
+          && !e.shiftKey;
+        if (plainEscape) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -1754,6 +1806,7 @@ export function App(): JSX.Element {
             sessionClockVisible={sessionClockVisible}
             streamWarning={streamWarning}
             isConnecting={streamStatus === "connecting"}
+            isReconnecting={signalingReconnecting}
             gameTitle={streamingGame?.title ?? "Game"}
             micStatus={micAudioState?.status ?? null}
             onToggleFullscreen={() => {

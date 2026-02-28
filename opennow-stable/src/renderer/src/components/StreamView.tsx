@@ -34,6 +34,7 @@ interface StreamViewProps {
     secondsLeft?: number;
   } | null;
   isConnecting: boolean;
+  isReconnecting: boolean;
   gameTitle: string;
   micStatus: MicStatus | null;
   onToggleFullscreen: () => void;
@@ -118,6 +119,7 @@ export function StreamView({
   sessionClockVisible,
   streamWarning,
   isConnecting,
+  isReconnecting,
   gameTitle,
   micStatus,
   onToggleFullscreen,
@@ -178,12 +180,12 @@ export function StreamView({
       )}
 
       {/* Connecting overlay */}
-      {isConnecting && (
+      {(isConnecting || isReconnecting) && (
         <div className="sv-connect">
           <div className="sv-connect-inner">
             <Loader2 className="sv-connect-spin" size={44} />
-            <p className="sv-connect-title">Connecting to {gameTitle}</p>
-            <p className="sv-connect-sub">Setting up stream...</p>
+            <p className="sv-connect-title">{isReconnecting ? "Reconnecting to stream..." : `Connecting to ${gameTitle}`}</p>
+            <p className="sv-connect-sub">{isReconnecting ? "Trying to restore signaling" : "Setting up stream..."}</p>
           </div>
         </div>
       )}
