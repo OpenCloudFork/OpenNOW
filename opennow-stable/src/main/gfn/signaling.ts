@@ -31,6 +31,11 @@ export class GfnSignalingClient {
   private peerName = `peer-${Math.floor(Math.random() * 10_000_000_000)}`;
   private ackCounter = 0;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private transportPingTimer: NodeJS.Timeout | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 6;
+  private closedByUser = false;
   private listeners = new Set<(event: MainToRendererSignalingEvent) => void>();
 
   constructor(
@@ -91,6 +96,12 @@ export class GfnSignalingClient {
     this.heartbeatTimer = setInterval(() => {
       this.sendJson({ hb: 1 });
     }, 5000);
+
+    this.transportPingTimer = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.ping();
+      }
+    }, 15000);
   }
 
   private clearHeartbeat(): void {
@@ -98,6 +109,51 @@ export class GfnSignalingClient {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+    if (this.transportPingTimer) {
+      clearInterval(this.transportPingTimer);
+      this.transportPingTimer = null;
+    }
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private shouldReconnect(closeCode: number): boolean {
+    if (this.closedByUser) {
+      return false;
+    }
+    return closeCode !== 1000 && closeCode !== 1001;
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer || this.closedByUser) {
+      return;
+    }
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.emit({ type: "error", message: "Signaling reconnect exhausted (max retries reached)" });
+      return;
+    }
+
+    this.reconnectAttempts += 1;
+    const baseDelayMs = Math.min(30000, 1000 * (2 ** (this.reconnectAttempts - 1)));
+    const jitterMs = Math.floor(Math.random() * 400);
+    const delayMs = baseDelayMs + jitterMs;
+    console.warn(`[Signaling] Scheduling reconnect #${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delayMs}ms`);
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.closedByUser) {
+        return;
+      }
+      this.connect().catch((error) => {
+        console.warn("[Signaling] Reconnect attempt failed:", error);
+        this.scheduleReconnect();
+      });
+    }, delayMs);
   }
 
   private sendPeerInfo(): void {
@@ -117,7 +173,9 @@ export class GfnSignalingClient {
   }
 
   async connect(): Promise<void> {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    this.closedByUser = false;
+    this.clearReconnectTimer();
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
@@ -129,6 +187,18 @@ export class GfnSignalingClient {
     console.log("[Signaling] Protocol:", protocol);
 
     await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const fail = (error: unknown): void => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
+      const succeed = (): void => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+
       // Extract host:port for the Host header (matching Rust behavior)
       const urlHost = url.replace(/^wss?:\/\//, "").split("/")[0];
 
@@ -146,14 +216,15 @@ export class GfnSignalingClient {
 
       ws.once("error", (error) => {
         this.emit({ type: "error", message: `Signaling connect failed: ${String(error)}` });
-        reject(error);
+        fail(error);
       });
 
       ws.once("open", () => {
+        this.reconnectAttempts = 0;
         this.sendPeerInfo();
         this.setupHeartbeat();
         this.emit({ type: "connected" });
-        resolve();
+        succeed();
       });
 
       ws.on("message", (raw) => {
@@ -161,10 +232,19 @@ export class GfnSignalingClient {
         this.handleMessage(text);
       });
 
-      ws.on("close", (_code, reason) => {
+      ws.on("close", (code, reason) => {
         this.clearHeartbeat();
         const reasonText = typeof reason === "string" ? reason : reason.toString("utf8");
-        this.emit({ type: "disconnected", reason: reasonText || "socket closed" });
+        const closeSummary = `code=${code}, reason=${reasonText || "socket closed"}`;
+        console.warn(`[Signaling] Disconnected (${closeSummary})`);
+        this.emit({ type: "disconnected", reason: closeSummary });
+        this.ws = null;
+        if (!settled) {
+          fail(new Error(`Signaling socket closed before open (${closeSummary})`));
+        }
+        if (this.shouldReconnect(code)) {
+          this.scheduleReconnect();
+        }
       });
     });
   }
@@ -272,6 +352,9 @@ export class GfnSignalingClient {
   }
 
   disconnect(): void {
+    this.closedByUser = true;
+    this.clearReconnectTimer();
+    this.reconnectAttempts = 0;
     this.clearHeartbeat();
     if (this.ws) {
       this.ws.close();
